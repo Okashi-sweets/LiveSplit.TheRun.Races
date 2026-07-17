@@ -71,6 +71,7 @@ internal sealed class RaceRoomForm : Form
 
     private async void OnLoaded(object sender, EventArgs e)
     {
+        DebugLog.Info("Initializing race-room WebView.");
         try
         {
             CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(
@@ -85,9 +86,11 @@ internal sealed class RaceRoomForm : Form
             webView.Source = new Uri(roomUrl);
             loadingLabel.Visible = false;
             webView.Visible = true;
+            DebugLog.Info("Race-room WebView initialized.");
         }
-        catch
+        catch (Exception ex)
         {
+            DebugLog.Error("Race-room WebView initialization failed.", ex);
             ShowWebView2RuntimeDialog();
         }
     }
@@ -98,10 +101,12 @@ internal sealed class RaceRoomForm : Form
     {
         if (!e.IsSuccess || webView.Source == null)
         {
+            DebugLog.Info("WebView navigation did not complete successfully. Error: " + e.WebErrorStatus + ".");
             return;
         }
 
         string host = webView.Source.Host.ToLowerInvariant();
+        DebugLog.Info("WebView navigation completed. Host: " + host + ".");
         if (host == "id.twitch.tv")
         {
             // Let the user complete Twitch authentication in the same WebView.
@@ -127,6 +132,7 @@ internal sealed class RaceRoomForm : Form
 
         if (hasSession)
         {
+            DebugLog.Info("therun.gg session cookie detected.");
             navigatingToLogin = false;
             if (!navigatingBackToRace && !IsRaceRoomUrl(webView.Source))
             {
@@ -143,6 +149,7 @@ internal sealed class RaceRoomForm : Form
 
         if (!navigatingToLogin)
         {
+            DebugLog.Info("No therun.gg session detected; opening official login flow.");
             navigatingToLogin = true;
             await NavigateToOfficialLogin();
         }
@@ -167,8 +174,9 @@ internal sealed class RaceRoomForm : Form
                     return;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                DebugLog.Error("Could not inspect the therun.gg login page.", ex);
             }
 
             await Task.Delay(250);
@@ -206,6 +214,7 @@ internal sealed class RaceRoomForm : Form
 
     private void OnFormClosed(object sender, FormClosedEventArgs e)
     {
+        DebugLog.Info("Disposing race-room WebView.");
         api.OnRoomClosed(this);
         webView.Dispose();
     }

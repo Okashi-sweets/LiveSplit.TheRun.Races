@@ -61,7 +61,7 @@ internal sealed class TheRunLiveSync : IDisposable
             if (State.CurrentSplitIndex == State.Run.Count && Settings.IsStatsUploadingEnabled)
                 await UploadSplits();
         }
-        catch { }
+        catch (Exception ex) { DebugLog.Error("Live timer update or completion upload failed.", ex); }
         justResumed = false;
     }
 
@@ -88,7 +88,7 @@ internal sealed class TheRunLiveSync : IDisposable
             if (Settings.IsLiveTrackingEnabled) await SendLive();
             if (Settings.IsStatsUploadingEnabled && Settings.IsUploadOnResetEnabled) await UploadSplits();
         }
-        catch { }
+        catch (Exception ex) { DebugLog.Error("Reset update or LSS upload failed.", ex); }
     }
 
     private async Task SendLive()
@@ -100,6 +100,7 @@ internal sealed class TheRunLiveSync : IDisposable
         using var content = new StringContent(json);
         HttpResponseMessage response = await client.PostAsync(LiveUrl, content, liveCancellation.Token);
         response.EnsureSuccessStatusCode();
+        DebugLog.Info("Live timer state sent. Split index: " + State.CurrentSplitIndex + ".");
     }
 
     private object BuildLiveData()
@@ -169,6 +170,7 @@ internal sealed class TheRunLiveSync : IDisposable
         content.Headers.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment");
         HttpResponseMessage put = await client.PutAsync(url, content);
         put.EnsureSuccessStatusCode();
+        DebugLog.Info("LSS upload completed. Game: " + State.Run.GameName + ", category: " + State.Run.CategoryName + ".");
     }
 
     private string CreateLss()

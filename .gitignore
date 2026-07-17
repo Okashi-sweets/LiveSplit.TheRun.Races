@@ -21,6 +21,7 @@ WebView2_cache/
 TheRunWebView2/
 uploadkey.txt
 *.log
+*.log.old
 
 # OS files
 .DS_Store

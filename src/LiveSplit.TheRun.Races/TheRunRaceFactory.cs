@@ -24,5 +24,5 @@ public sealed class TheRunRaceFactory : IRaceProviderFactory
 
     public string XMLURL => "";
 
-    public Version Version => new(0, 2, 0);
+    public Version Version => new(0, 2, 1);
 }

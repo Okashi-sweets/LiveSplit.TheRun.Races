@@ -39,6 +39,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     private TheRunRaceAPI()
     {
+        DebugLog.Info("Component initialized. Version 0.2.1.");
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         JoinRace = Join;
         CreateRace = _ => OpenUrl(WebsiteRoot + "/create");
@@ -75,10 +76,12 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
                 .Select(TheRunRaceInfo.FromDto)
                 .ToArray() ?? [];
             LastRefreshError = null;
+            DebugLog.Info("Race list refreshed. Joinable races: " + races.Count + ".");
             RacesRefreshedCallback?.Invoke(this);
         }
         catch (Exception ex)
         {
+            DebugLog.Error("Race list refresh failed.", ex);
             LastRefreshError = ex.ToString();
             races = [];
             RacesRefreshedCallback?.Invoke(this);
@@ -92,6 +95,8 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             return;
         }
 
+        DebugLog.Info("Opening race room. Race ID: " + raceId + ".");
+
         TheRunRaceDto race;
         try
         {
@@ -99,6 +104,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         }
         catch (Exception ex)
         {
+            DebugLog.Error("Race details could not be loaded. Race ID: " + raceId + ".", ex);
             MessageBox.Show(
                 "The race information could not be loaded.\n\n" + ex.Message,
                 "therun.gg Races",
@@ -109,6 +115,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
         if (race?.status != "pending")
         {
+            DebugLog.Info("Race is no longer joinable. Race ID: " + raceId + ", status: " + (race?.status ?? "null") + ".");
             MessageBox.Show(
                 "This race has already started or is no longer accepting participants.",
                 "therun.gg Races",
@@ -131,6 +138,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     internal void StartWatcher(ITimerModel model, string raceId)
     {
+        DebugLog.Info("Starting race WebSocket watcher. Race ID: " + raceId + ".");
         CancellationTokenSource cancellation = new();
         lock (watcherLock)
         {
@@ -145,6 +153,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     internal void CancelWatcher()
     {
+        DebugLog.Info("Stopping race WebSocket watcher.");
         lock (watcherLock)
         {
             watcherCancellation?.Cancel();
@@ -161,6 +170,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         }
 
         CancelWatcher();
+        DebugLog.Info("Race room closed.");
         RestoreOriginalOffset();
         roomForm = null;
     }
@@ -176,6 +186,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             using var socket = new ClientWebSocket();
             var socketUri = new Uri(WebSocketRoot + "?race=" + Uri.EscapeDataString(raceId));
             await socket.ConnectAsync(socketUri, cancellationToken);
+            DebugLog.Info("Race WebSocket connected. Race ID: " + raceId + ".");
 
             // The socket does not send an initial snapshot, so close the race-between-check-and-connect gap.
             TheRunRaceDto snapshot = await GetRace(raceId);
@@ -211,9 +222,11 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         }
         catch (OperationCanceledException)
         {
+            DebugLog.Info("Race WebSocket watcher cancelled. Race ID: " + raceId + ".");
         }
         catch (Exception ex)
         {
+            DebugLog.Error("Race WebSocket watcher failed. Race ID: " + raceId + ".", ex);
             Post(uiContext, () => MessageBox.Show(
                 "The connection to the therun.gg race room was lost before the countdown started.\n\n" + ex.Message,
                 "therun.gg Races",
@@ -264,6 +277,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         }
 
         Post(uiContext, () => StartTimer(model, startTime.ToUniversalTime()));
+        DebugLog.Info("Race start scheduled for " + startTime.ToUniversalTime().ToString("O") + ".");
         return true;
     }
 
@@ -275,6 +289,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
         if (timerModel.CurrentState.CurrentPhase != TimerPhase.NotRunning)
         {
+            DebugLog.Info("Timer start skipped because LiveSplit is already running.");
             MessageBox.Show(
                 "The therun.gg countdown started, but the LiveSplit timer was already running.",
                 "therun.gg Races",
@@ -293,6 +308,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         timerModel.CurrentState.Run.Offset = remaining.Negate();
         timerModel.CurrentState.AdjustedStartTime = TimeStamp.Now - timerModel.CurrentState.Run.Offset;
         timerModel.Start();
+        DebugLog.Info("LiveSplit timer started. Remaining countdown ms: " + remaining.TotalMilliseconds.ToString("F0") + ".");
     }
 
     private void PrepareCountdownOffset(ITimerModel model, int countdownSeconds)
@@ -316,6 +332,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         }
 
         timerModel.CurrentState.Run.Offset = TimeSpan.FromSeconds(-countdownSeconds);
+        DebugLog.Info("Countdown offset prepared. Seconds: " + countdownSeconds + ".");
         timerModel.CurrentState.AdjustedStartTime =
             TimeStamp.Now - timerModel.CurrentState.Run.Offset;
     }
@@ -331,6 +348,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         {
             // Changing Run.Offset during a run would move the active timer.
             restoreOffsetOnReset = true;
+            DebugLog.Info("Offset restoration deferred until reset.");
             return;
         }
 
@@ -354,6 +372,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
         ITimerModel timerModel = preparedModel;
         timerModel.CurrentState.Run.Offset = originalOffset;
+        DebugLog.Info("Original offset restored. Milliseconds: " + originalOffset.TotalMilliseconds.ToString("F0") + ".");
         timerModel.CurrentState.AdjustedStartTime =
             TimeStamp.Now - timerModel.CurrentState.Run.Offset;
         timerModel.CurrentState.OnReset -= OnTimerReset;

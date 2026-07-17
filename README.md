@@ -73,6 +73,17 @@ The embedded browser stores therun.gg/Twitch session data under:
 %LOCALAPPDATA%\LiveSplit\TheRunWebView2
 ```
 
+## Debug log
+
+Diagnostic events are written to:
+
+```text
+%LOCALAPPDATA%\LiveSplit\TheRunRaces\debug.log
+```
+
+The log is rotated to `debug.log.old` at approximately 2 MB. Upload keys and
+cookies are not written to the log.
+
 ## Building
 
 Build against a LiveSplit source checkout:
