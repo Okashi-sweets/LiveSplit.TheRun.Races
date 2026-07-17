@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <RootPath>$(MSBuildThisFileDirectory)</RootPath>
+    <SrcPath>$(RootPath)/src</SrcPath>
+    <LangVersion>12</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+</Project>

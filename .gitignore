@@ -1,0 +1,27 @@
+# Build outputs
+**/bin/
+**/obj/
+dist/
+artifacts/
+
+# IDE and user-specific files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local SDK/NuGet state
+.dotnet-home/
+packages/
+
+# Runtime data and secrets
+WebView2_cache/
+TheRunWebView2/
+uploadkey.txt
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

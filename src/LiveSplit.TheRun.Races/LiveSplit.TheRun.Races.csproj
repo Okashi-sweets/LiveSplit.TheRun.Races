@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <UseWindowsForms>true</UseWindowsForms>
+    <TargetFramework>net4.8.1</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AssemblyName>LiveSplit.TheRun.Races</AssemblyName>
+    <RootNamespace>LiveSplit.TheRun.Races</RootNamespace>
+    <Description>Unofficial therun.gg race-room integration for LiveSplit.</Description>
+    <Copyright>Copyright (c) 2026 LiveSplit.TheRun.Races contributors</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Version>0.2.0</Version>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(LsBinPath)' == ''">
+    <ProjectReference Include="$(LsSrcPath)/LiveSplit.Core/LiveSplit.Core.csproj" Private="false" ExcludeAssets="runtime" />
+    <ProjectReference Include="$(LsSrcPath)/UpdateManager/UpdateManager.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(LsBinPath)' != ''">
+    <Reference Include="LiveSplit.Core" HintPath="$(LsBinPath)/LiveSplit.Core.dll" Private="false" />
+    <Reference Include="UpdateManager" HintPath="$(LsBinPath)/UpdateManager.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Match the WebView2 assemblies bundled with LiveSplit 1.8.37 / Racetime. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2420.47" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+</Project>
