@@ -16,15 +16,26 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
     public bool IsStatsUploadingEnabled { get; set; } = true;
     public bool IsUploadOnResetEnabled { get; set; } = true;
     public bool IsLayoutPathUploadEnabled { get; set; }
-    public bool UseLiteRaceRoom { get; set; }
 
     public string UploadKey => File.Exists(UploadKeyFile)
         ? File.ReadAllText(UploadKeyFile).Trim()
         : "";
 
-    public override string Name { get => "LiveSplit.TheRun.Races.dll"; set { } }
+    public override string Name
+    {
+#if LITE_ROOM
+        get => "LiveSplit.TheRun.Races.Lite.dll";
+#else
+        get => "LiveSplit.TheRun.Races.dll";
+#endif
+        set { }
+    }
 
+#if LITE_ROOM
+    public override string DisplayName => "therun.gg Races Lite";
+#else
     public override string DisplayName => "therun.gg Races";
+#endif
 
     public override string WebsiteLink => "https://therun.gg/races";
 
@@ -44,8 +55,7 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
         IsLiveTrackingEnabled = IsLiveTrackingEnabled,
         IsStatsUploadingEnabled = IsStatsUploadingEnabled,
         IsUploadOnResetEnabled = IsUploadOnResetEnabled,
-        IsLayoutPathUploadEnabled = IsLayoutPathUploadEnabled,
-        UseLiteRaceRoom = UseLiteRaceRoom
+        IsLayoutPathUploadEnabled = IsLayoutPathUploadEnabled
     };
 
     public override void FromXml(XmlElement element, Version version)
@@ -55,7 +65,6 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
         IsStatsUploadingEnabled = ReadBool(element, nameof(IsStatsUploadingEnabled), true);
         IsUploadOnResetEnabled = ReadBool(element, nameof(IsUploadOnResetEnabled), true);
         IsLayoutPathUploadEnabled = ReadBool(element, nameof(IsLayoutPathUploadEnabled), false);
-        UseLiteRaceRoom = ReadBool(element, nameof(UseLiteRaceRoom), false);
     }
 
     public override XmlElement ToXml(XmlDocument document)
@@ -65,7 +74,6 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
         Add(document, element, nameof(IsStatsUploadingEnabled), IsStatsUploadingEnabled);
         Add(document, element, nameof(IsUploadOnResetEnabled), IsUploadOnResetEnabled);
         Add(document, element, nameof(IsLayoutPathUploadEnabled), IsLayoutPathUploadEnabled);
-        Add(document, element, nameof(UseLiteRaceRoom), UseLiteRaceRoom);
         return element;
     }
 

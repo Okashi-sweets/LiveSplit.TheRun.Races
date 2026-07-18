@@ -3,13 +3,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <TargetFramework>net4.8.1</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
-    <AssemblyName>LiveSplit.TheRun.Races</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>LiveSplit.TheRun.Races.Lite</AssemblyName>
     <RootNamespace>LiveSplit.TheRun.Races</RootNamespace>
-    <Description>Unofficial therun.gg race-room integration for LiveSplit.</Description>
+    <Description>Unofficial lightweight therun.gg race-room integration for LiveSplit.</Description>
     <Copyright>Copyright (c) 2026 LiveSplit.TheRun.Races contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Version>0.3.1</Version>
     <Deterministic>true</Deterministic>
+    <DefineConstants>$(DefineConstants);LITE_ROOM</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(LsBinPath)' == ''">
@@ -23,14 +25,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Match the WebView2 assemblies bundled with LiveSplit 1.8.37 / Racetime. -->
+    <Compile Include="..\LiveSplit.TheRun.Races\*.cs" Link="%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\LiveSplit.TheRun.Races\Assets\LiteRaceRoom.html" LogicalName="LiveSplit.TheRun.Races.Assets.LiteRaceRoom.html" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2420.47" ExcludeAssets="runtime" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Web" />
     <Reference Include="System.Web.Extensions" />
-  </ItemGroup>
-
-  <ItemGroup>
     <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

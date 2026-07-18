@@ -40,13 +40,17 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     private TheRunRaceAPI()
     {
-        DebugLog.Info("Component initialized. Version 0.3.0.");
+        DebugLog.Info("Component initialized. Version 0.3.1.");
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         JoinRace = Join;
         CreateRace = _ => OpenUrl(WebsiteRoot + "/create");
     }
 
+#if LITE_ROOM
+    public override string ProviderName => "therun.gg Lite";
+#else
     public override string ProviderName => "therun.gg";
+#endif
 
     public override string Username => null;
 
@@ -73,11 +77,14 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             string json = await httpClient.GetStringAsync(ApiRoot + "/active");
             RaceListResponse response = serializer.Deserialize<RaceListResponse>(json);
             races = response?.result?
-                .Where(race => race.status == "pending" && race.visible && !string.IsNullOrWhiteSpace(race.raceId))
+                .Where(race =>
+                    race.status is "pending" or "starting" or "progress" &&
+                    race.visible &&
+                    !string.IsNullOrWhiteSpace(race.raceId))
                 .Select(TheRunRaceInfo.FromDto)
                 .ToArray() ?? [];
             LastRefreshError = null;
-            DebugLog.Info("Race list refreshed. Joinable races: " + races.Count + ".");
+            DebugLog.Info("Race list refreshed. Active races: " + races.Count + ".");
             RacesRefreshedCallback?.Invoke(this);
         }
         catch (Exception ex)
@@ -114,7 +121,9 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             return;
         }
 
-        if (race?.status != "pending")
+        bool isJoinable = race?.status == "pending";
+        bool isOngoing = race?.status is "starting" or "progress";
+        if (!isJoinable && !isOngoing)
         {
             DebugLog.Info("Race is no longer joinable. Race ID: " + raceId + ", status: " + (race?.status ?? "null") + ".");
             MessageBox.Show(
@@ -126,28 +135,41 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             return;
         }
 
-        PrepareCountdownOffset(model, race.countdownSeconds);
+        if (isJoinable)
+        {
+            PrepareCountdownOffset(model, race.countdownSeconds);
+        }
+        else
+        {
+            // An in-progress room is observation-only. Never carry a prepared
+            // race offset into it from a previously opened pending room.
+            RestoreOriginalOffset();
+        }
 
         roomForm?.Close();
         var settings = Settings as TheRunRaceSettings;
-        bool useLiteRoom = settings?.UseLiteRaceRoom == true;
-        if (useLiteRoom && string.IsNullOrWhiteSpace(settings.UploadKey))
+#if LITE_ROOM
+        if (settings == null || string.IsNullOrWhiteSpace(settings.UploadKey))
         {
-            useLiteRoom = false;
             MessageBox.Show(
                 "The lightweight race room requires a therun.gg upload key. " +
-                "The official race page will be opened instead.",
-                "therun.gg Races",
+                "Save an upload key in the therun.gg Races Lite settings first.",
+                "therun.gg Races Lite",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+            RestoreOriginalOffset();
+            return;
         }
+#endif
         roomForm = new RaceRoomForm(
             this,
             raceId,
             WebsiteRoot + "/" + Uri.EscapeDataString(raceId),
-            model.CurrentState.LayoutSettings.AlwaysOnTop,
-            useLiteRoom);
-        StartWatcher(model, raceId);
+            model.CurrentState.LayoutSettings.AlwaysOnTop);
+        if (isJoinable)
+        {
+            StartWatcher(model, raceId);
+        }
     }
 
     internal void StartWatcher(ITimerModel model, string raceId)

@@ -18,11 +18,15 @@ public sealed class TheRunRaceFactory : IRaceProviderFactory
 
     public RaceProviderSettings CreateSettings() => new TheRunRaceSettings();
 
+#if LITE_ROOM
+    public string UpdateName => "therun.gg Race Integration Lite";
+#else
     public string UpdateName => "therun.gg Race Integration";
+#endif
 
     public string UpdateURL => "";
 
     public string XMLURL => "";
 
-    public Version Version => new(0, 3, 0);
+    public Version Version => new(0, 3, 1);
 }

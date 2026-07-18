@@ -12,11 +12,13 @@ WebView2ウィンドウで開きます。
 ## 機能
 
 - LiveSplitの右クリックメニューに **therun.gg Races** を追加します。
-- 公開中かつ参加受付中（`pending`）のレースだけを表示します。
+- 公開中かつ参加受付中（`pending`）のレースを表示します。
+- `starting` と `progress` のレースは、進行中レースとして別枠に表示します。
+- 進行中レースを開いてもLiveSplitのOffsetを変更せず、レース開始監視も開始しません。
 - レースルームを開く直前に、参加可能な状態か再確認します。
 - レースルームをLiveSplit内で開き、専用WebView2プロファイルにログイン状態を保存します。
 - 公式版・軽量HTML版のどちらでも、ウィンドウを閉じると開始前のレースからUnjoinします。カウントダウン開始後はForfeitを送信しません。
-- 初期設定では公式レースページを表示します。レースプロバイダー設定から、参加者進捗と基本操作に対応する軽量HTML版へ切り替えられます。
+- 公式ページ版と軽量HTML版を別々のDLLとして提供します。コンポーネント内に表示切替設定はありません。
 - ルームを開いた時点で、設定されたカウントダウン秒数を負のOffsetとして設定します。
 - ルームから離れたときは、レース参加前のOffsetへ戻します。タイマー動作中の場合はリセット後に戻します。
 - LiveSplitの0秒がレース開始時刻と一致するように、一度だけタイマーを開始します。
@@ -26,28 +28,30 @@ WebView2ウィンドウで開きます。
 - 公式 `LiveSplit.TheRun` コンポーネントと同じUpload Keyを共有します。
 - 現在のレイアウトで公式コンポーネントが動作している場合は、本コンポーネントからの送信を止めて二重送信を防ぎます。
 
-## 公式版と軽量HTML版
+## 公式版コンポーネントと軽量HTML版コンポーネント
 
-初期設定では公式therun.ggレースページを使用します。通常利用では公式版を推奨します。
-therun.gg側で追加される機能を含め、完全なレース画面を利用できます。
+`LiveSplit.TheRun.Races.dll` は公式therun.ggレースページを表示します。通常利用では
+この公式ページ版を推奨します。therun.gg側で追加される機能を含め、完全なレース画面を利用できます。
 
-軽量HTML版は、このコンポーネントに埋め込まれた小さなレース画面です。
-公式レースページがLiveSplit内で読み込めない、または正常に動作しない場合のみ、
-**therun.gg Races** の設定にある **Use lightweight HTML race room** を有効にしてください。
-有効化には、保存済みのtherun.gg Upload Keyが必要です。選択内容は保存され、
-次にレースルームを開いたときから適用されます。
+`LiveSplit.TheRun.Races.Lite.dll` は、埋め込みの小さなHTMLレース画面だけを表示します。
+公式レースページがLiveSplit内で読み込めない、または正常に動作しない場合のみ使用してください。
+Lite版で部屋を開くには、保存済みのtherun.gg Upload Keyが必要です。
 
 軽量HTML版では、次の機能を利用できます。
 
 - レース状態、カウントダウン、参加者、現在のスプリット、進捗、タイムの表示
 - レース開始前のJoin、Ready、Unready、Unjoin
 - WebView2プロファイルに保存されたtherun.ggログインセッションの再利用
-- 完全なレースルームへ移動する **Official page** ボタン
 
 FinishとForfeitは軽量HTML版から操作できません。また、チーム管理、チャット、
 モデレーション、詳細グラフ、配信表示などには対応しません。
-これらの機能は公式ページで利用してください。また、軽量HTML版はtherun.ggのAPI挙動に
-依存するため、将来のAPI変更後にはコンポーネントの更新が必要になる場合があります。
+進行中のレース部屋を開いた場合は操作ボタンを一切表示しません。
+これらの機能は公式ページで利用してください。
+
+### Lite版の開発・サポートについて
+
+Lite版は、通常の公式ページ版が利用環境で動作しない場合にのみ使用してください。
+Lite版は現状のまま提供され、これ以降の機能開発、互換性対応、利用者サポートは行いません。
 
 ## 動作条件
 
@@ -55,8 +59,8 @@ FinishとForfeitは軽量HTML版から操作できません。また、チーム
 
 ## インストール
 
-1. 最新のGitHub Releaseから `LiveSplit.TheRun.Races.dll`、`LICENSE`、`THIRD-PARTY-NOTICES.md` を含む配布ZIPをダウンロードします。
-2. DLLをLiveSplitの `Components` フォルダーへコピーします。
+1. 最新のGitHub Releaseから、公式ページ版の `LiveSplit.TheRun.Races.dll` または軽量HTML版の `LiveSplit.TheRun.Races.Lite.dll` をダウンロードします。
+2. 使用するどちらか一方のDLLをLiveSplitの `Components` フォルダーへコピーします。
 3. LiveSplitを再起動します。
 4. LiveSplitのレースプロバイダー設定で **therun.gg Races** を有効化・設定します。
 
@@ -111,12 +115,18 @@ LiveSplitのソースを参照してビルドする場合：
 ```powershell
 dotnet build src/LiveSplit.TheRun.Races/LiveSplit.TheRun.Races.csproj `
   -p:LsSrcPath=C:/path/to/LiveSplit/src
+
+dotnet build src/LiveSplit.TheRun.Races.Lite/LiveSplit.TheRun.Races.Lite.csproj `
+  -p:LsSrcPath=C:/path/to/LiveSplit/src
 ```
 
 LiveSplitリリース版のDLLを参照してビルドする場合：
 
 ```powershell
 dotnet build src/LiveSplit.TheRun.Races/LiveSplit.TheRun.Races.csproj `
+  -p:LsBinPath=C:/path/to/LiveSplit
+
+dotnet build src/LiveSplit.TheRun.Races.Lite/LiveSplit.TheRun.Races.Lite.csproj `
   -p:LsBinPath=C:/path/to/LiveSplit
 ```
 

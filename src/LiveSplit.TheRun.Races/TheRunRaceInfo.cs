@@ -32,8 +32,11 @@ public sealed class TheRunRaceInfo : IRaceInfo
         }
     }
 
-    // LiveSplit displays only state 1 as a joinable race in the provider submenu.
-    public int State => RawStatus == "pending" ? 1 : 42;
+    // LiveSplit separates state 1 (joinable) and state 3 (in progress) in the
+    // provider submenu, matching the behavior of the Racetime provider.
+    public int State => RawStatus == "pending"
+        ? 1
+        : RawStatus is "starting" or "progress" ? 3 : 42;
 
     public bool IsParticipant(string username) => false;
 
