@@ -76,7 +76,7 @@ at the same time.
 - **Standard version (recommended):** [Download from the v0.4.0 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/v0.4.0)
   Download `LiveSplit.TheRun.Races.dll`. This version opens the official
   therun.gg race page.
-- **Lite version (unsupported fallback):** [Download from the Lite v0.4.0 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/lite_v0.4.0)
+- **Lite version (unsupported fallback):** [Download from the Lite v0.4.1 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/lite_v0.4.1)
   Download `LiveSplit.TheRun.Races.Lite.dll`. Use it only when the standard
   version does not work in your environment.
 
