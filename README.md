@@ -68,11 +68,22 @@ will be provided for it.
 
 - LiveSplit 1.8.37 or a compatible version
 
+## Downloads
+
+Choose one of the following releases. Do not install both component variants
+at the same time.
+
+- **Standard version (recommended):** [Download from the v0.4.0 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/v0.4.0)
+  Download `LiveSplit.TheRun.Races.dll`. This version opens the official
+  therun.gg race page.
+- **Lite version (unsupported fallback):** [Download from the Lite v0.4.0 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/lite_v0.4.0)
+  Download `LiveSplit.TheRun.Races.Lite.dll`. Use it only when the standard
+  version does not work in your environment.
+
 ## Installation
 
-1. Download either `LiveSplit.TheRun.Races.dll` for the official page or
-   `LiveSplit.TheRun.Races.Lite.dll` for the lightweight room from the latest
-   GitHub Release.
+1. Download the DLL for the selected version from the corresponding release
+   linked above.
 2. Copy the selected DLL to LiveSplit's `Components` directory. Install only
    the variant you intend to use.
 3. Restart LiveSplit.

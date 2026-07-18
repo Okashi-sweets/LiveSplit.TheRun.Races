@@ -3,12 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>therun.gg Lite</title>
+<title>Race Room</title>
 <style>
 :root{color-scheme:dark;--bg:#111416;--panel:#191d20;--line:#30363b;--text:#f3f5f6;--muted:#9ca6ad;--green:#58c878;--red:#e46f6f;--blue:#71a7ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-header{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line);background:#111416f2}
-.brand{font-weight:750;color:var(--green)}.grow{flex:1}.muted{color:var(--muted)}button,input{font:inherit}
+.muted{color:var(--muted)}button,input{font:inherit}
 button{border:1px solid var(--line);border-radius:6px;background:#242a2e;color:var(--text);padding:7px 11px;cursor:pointer}button:hover{border-color:#576168}button:disabled{cursor:not-allowed;opacity:.42;border-color:var(--line)}button.primary{background:#226b3a;border-color:#348d51}button.danger{background:#642d31;border-color:#8c4046}
 main{max-width:1080px;margin:auto;padding:18px}.hero,.panel{border:1px solid var(--line);border-radius:9px;background:var(--panel)}
 .hero{padding:18px;margin-bottom:14px}.title{font-size:22px;font-weight:750}.subtitle{margin-top:3px;color:var(--muted)}
@@ -18,11 +17,10 @@ main{max-width:1080px;margin:auto;padding:18px}.hero,.panel{border:1px solid var
 .bar{height:5px;background:#30363b;border-radius:9px;overflow:hidden;margin-top:6px}.bar>i{display:block;height:100%;background:var(--green)}
 .actions{padding:12px;display:grid;gap:8px}.actions button{width:100%}.password{width:100%;border:1px solid var(--line);border-radius:6px;background:#101315;color:var(--text);padding:8px}
 #notice{display:none;margin-bottom:14px;padding:10px 12px;border-radius:6px;border:1px solid var(--line)}#notice.error{display:block;color:#ffb8b8;border-color:#713d42;background:#321d20}#notice.success{display:block;color:#baf0c8;border-color:#365f42;background:#1b3021}
-@media(max-width:720px){.grid{grid-template-columns:1fr}.runner{grid-template-columns:1fr 80px}.runner .progress{grid-column:1/-1}header{padding:10px}main{padding:10px}}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.runner{grid-template-columns:1fr 80px}.runner .progress{grid-column:1/-1}main{padding:10px}}
 </style>
 </head>
 <body>
-<header><span class="brand">therun.gg Lite</span><span class="muted">Race {{RACE_ID}}</span><span class="grow"></span></header>
 <main>
   <div id="notice"></div>
   <section class="hero"><div class="title" id="title">Loading race…</div><div class="subtitle" id="subtitle"></div><div class="facts" id="facts"></div></section>
