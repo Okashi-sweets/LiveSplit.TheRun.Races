@@ -28,5 +28,9 @@ public sealed class TheRunRaceFactory : IRaceProviderFactory
 
     public string XMLURL => "";
 
+#if LITE_ROOM
+    public Version Version => new(0, 4, 1);
+#else
     public Version Version => new(0, 4, 0);
+#endif
 }

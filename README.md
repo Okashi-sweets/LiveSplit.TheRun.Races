@@ -162,7 +162,3 @@ timer-upload implementation are adapted from the official MIT-licensed
 [`LiveSplit.TheRun`](https://github.com/therungg/LiveSplit.TheRun) component.
 See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for attribution and
 third-party license information.
-
-Release assets should include both component DLL variants, `LICENSE`, and
-`THIRD-PARTY-NOTICES.md`. Do not repackage the WebView2 assemblies from the
-NuGet build output; supported LiveSplit installations already provide them.

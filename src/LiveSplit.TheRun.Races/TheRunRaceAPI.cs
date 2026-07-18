@@ -40,7 +40,11 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     private TheRunRaceAPI()
     {
+#if LITE_ROOM
+        DebugLog.Info("Component initialized. Version 0.4.1.");
+#else
         DebugLog.Info("Component initialized. Version 0.4.0.");
+#endif
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         JoinRace = Join;
         CreateRace = _ => OpenUrl(WebsiteRoot + "/create");

@@ -9,7 +9,7 @@
     <Description>Unofficial lightweight therun.gg race-room integration for LiveSplit.</Description>
     <Copyright>Copyright (c) 2026 LiveSplit.TheRun.Races contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
     <Deterministic>true</Deterministic>
     <DefineConstants>$(DefineConstants);LITE_ROOM</DefineConstants>
   </PropertyGroup>
