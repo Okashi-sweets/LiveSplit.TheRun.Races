@@ -43,18 +43,43 @@ internal sealed class TheRunLiveSync : IDisposable
         State.OnReset += HandleReset;
     }
 
-    private bool CanSend => !OfficialSenderIsActive()
-        && !string.IsNullOrWhiteSpace(State.Run.GameName)
-        && !string.IsNullOrWhiteSpace(State.Run.CategoryName)
-        && Settings.UploadKey.Length == 36;
-
     private bool OfficialSenderIsActive() => State.Layout?.Components?.Any(component =>
         component.GetType().FullName == "LiveSplit.UI.Components.CollectorComponent"
         && component.GetType().Assembly.GetName().Name == "LiveSplit.TheRun") == true;
 
+    private string GetSendBlockReason()
+    {
+        if (OfficialSenderIsActive())
+            return "the official LiveSplit.TheRun sender is active in the current layout";
+        if (string.IsNullOrWhiteSpace(State.Run.GameName))
+            return "the run has no game name";
+        if (string.IsNullOrWhiteSpace(State.Run.CategoryName))
+            return "the run has no category name";
+
+        int uploadKeyLength = Settings?.UploadKey?.Length ?? 0;
+        if (uploadKeyLength != 36)
+            return "the upload key length is " + uploadKeyLength + " instead of 36";
+
+        return null;
+    }
+
+    private bool CanSend(string operation)
+    {
+        string reason = GetSendBlockReason();
+        if (reason == null) return true;
+
+        DebugLog.Info(operation + " skipped because " + reason + ".");
+        return false;
+    }
+
     private async void HandleSplit(object sender, object args)
     {
-        if (!CanSend || !Settings.IsLiveTrackingEnabled) return;
+        if (!Settings.IsLiveTrackingEnabled)
+        {
+            DebugLog.Info("Live timer update skipped because live tracking is disabled.");
+            return;
+        }
+        if (!CanSend("Live timer update")) return;
         try
         {
             await SendLive();
@@ -82,7 +107,13 @@ internal sealed class TheRunLiveSync : IDisposable
 
     private async void HandleReset(object sender, TimerPhase phase)
     {
-        if (!CanSend) return;
+        if (!Settings.IsLiveTrackingEnabled
+            && !(Settings.IsStatsUploadingEnabled && Settings.IsUploadOnResetEnabled))
+        {
+            DebugLog.Info("Reset synchronization skipped because live tracking and reset uploads are disabled.");
+            return;
+        }
+        if (!CanSend("Reset synchronization")) return;
         try
         {
             if (Settings.IsLiveTrackingEnabled) await SendLive();
