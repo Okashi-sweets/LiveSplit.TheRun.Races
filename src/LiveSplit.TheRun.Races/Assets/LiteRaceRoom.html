@@ -9,7 +9,7 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
 header{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line);background:#111416f2}
 .brand{font-weight:750;color:var(--green)}.grow{flex:1}.muted{color:var(--muted)}button,input{font:inherit}
-button{border:1px solid var(--line);border-radius:6px;background:#242a2e;color:var(--text);padding:7px 11px;cursor:pointer}button:hover{border-color:#576168}button.primary{background:#226b3a;border-color:#348d51}button.danger{background:#642d31;border-color:#8c4046}
+button{border:1px solid var(--line);border-radius:6px;background:#242a2e;color:var(--text);padding:7px 11px;cursor:pointer}button:hover{border-color:#576168}button:disabled{cursor:not-allowed;opacity:.42;border-color:var(--line)}button.primary{background:#226b3a;border-color:#348d51}button.danger{background:#642d31;border-color:#8c4046}
 main{max-width:1080px;margin:auto;padding:18px}.hero,.panel{border:1px solid var(--line);border-radius:9px;background:var(--panel)}
 .hero{padding:18px;margin-bottom:14px}.title{font-size:22px;font-weight:750}.subtitle{margin-top:3px;color:var(--muted)}
 .facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.chip{padding:4px 9px;border:1px solid var(--line);border-radius:99px;color:var(--muted)}
@@ -33,24 +33,27 @@ main{max-width:1080px;margin:auto;padding:18px}.hero,.panel{border:1px solid var
       <button class="primary" data-action="join">Join</button>
       <button class="primary" data-action="ready">Ready</button>
       <button data-action="unready">Unready</button>
-      <button class="primary" data-action="finish">Finish</button>
-      <button class="danger" data-action="leave">Leave / Forfeit</button>
+      <button class="danger" data-action="leave">Unjoin</button>
       <div class="muted">Only actions valid for your current race state will be accepted.</div>
     </div></aside>
   </div>
 </main>
 <script>
 const $=id=>document.getElementById(id), esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let countdownActive=false;
 const time=ms=>{if(ms==null)return '—';let s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;return(h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0')};
 function notice(type,message){const n=$('notice');n.className=type;n.textContent=message;clearTimeout(notice.t);notice.t=setTimeout(()=>{n.className='';n.textContent=''},5000)}
 function render(r){
   $('title').textContent=r.customName||r.displayGame||'Race'; $('subtitle').textContent=[r.displayGame,r.displayCategory].filter(Boolean).join(' · ');
   $('facts').innerHTML=[r.status,(r.participantCount??0)+' participants',(r.readyParticipantCount??0)+' ready',r.countdownSeconds?time(r.countdownSeconds*1000)+' countdown':null].filter(Boolean).map(x=>'<span class="chip">'+esc(x)+'</span>').join('');
+  const pending=r.status==='pending'; countdownActive=r.status==='starting';
+  const joinButton=document.querySelector('[data-action="join"]');if(joinButton)joinButton.hidden=!pending;
+  ['ready','unready','leave'].forEach(action=>{const button=document.querySelector('[data-action="'+action+'"]');if(button){button.hidden=!(pending||countdownActive);button.disabled=countdownActive}});
   const ps=r.participants||[]; if(!ps.length){$('participants').className='empty';$('participants').textContent='No participants yet.';return}
   $('participants').className=''; $('participants').innerHTML=ps.map(p=>{const l=p.liveData||{},pct=Math.max(0,Math.min(100,l.runPercentageTime??l.runPercentageSplits??0));return '<div class="runner"><div><div class="name">'+esc(p.user)+'</div><div class="muted">'+esc(l.currentSplitName||p.pb||'')+'</div></div><div class="status">'+esc(p.status)+'</div><div class="progress"><div>'+time(p.finalTime??l.currentTime)+'</div><div class="bar"><i style="width:'+pct+'%"></i></div></div></div>'}).join('');
 }
 chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.type==='snapshot'&&m.payload?.result)render(m.payload.result);else if(m.type==='error'||m.type==='success')notice(m.type,m.message)});
-document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;chrome.webview.postMessage({type:'action',action:b.dataset.action,password:$('password').value});setTimeout(()=>b.disabled=false,1000)}));
+document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>{if(b.disabled)return;b.disabled=true;chrome.webview.postMessage({type:'action',action:b.dataset.action,password:$('password').value});setTimeout(()=>b.disabled=countdownActive&&['ready','unready','leave'].includes(b.dataset.action),1000)}));
 $('official').addEventListener('click',()=>chrome.webview.postMessage({type:'official'}));
 </script>
 </body>

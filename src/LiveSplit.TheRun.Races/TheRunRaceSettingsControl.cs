@@ -20,6 +20,11 @@ internal sealed class TheRunRaceSettingsControl : UserControl
         this.settings = settings;
         Dock = DockStyle.Fill;
 
+        if (settings.UseLiteRaceRoom && string.IsNullOrWhiteSpace(settings.UploadKey))
+        {
+            settings.UseLiteRaceRoom = false;
+        }
+
         var live = new CheckBox { Text = "Send live timer updates to therun.gg", AutoSize = true, Checked = settings.IsLiveTrackingEnabled };
         var files = new CheckBox { Text = "Upload splits on completion and reset", AutoSize = true, Checked = settings.IsStatsUploadingEnabled && settings.IsUploadOnResetEnabled };
         var layout = new CheckBox { Text = "Include the LiveSplit layout path in uploads", AutoSize = true, Checked = settings.IsLayoutPathUploadEnabled };
@@ -39,7 +44,22 @@ internal sealed class TheRunRaceSettingsControl : UserControl
         live.CheckedChanged += (_, _) => settings.IsLiveTrackingEnabled = live.Checked;
         files.CheckedChanged += (_, _) => settings.IsStatsUploadingEnabled = settings.IsUploadOnResetEnabled = files.Checked;
         layout.CheckedChanged += (_, _) => settings.IsLayoutPathUploadEnabled = layout.Checked;
-        liteRoom.CheckedChanged += (_, _) => settings.UseLiteRaceRoom = liteRoom.Checked;
+        liteRoom.CheckedChanged += (_, _) =>
+        {
+            if (liteRoom.Checked && string.IsNullOrWhiteSpace(settings.UploadKey))
+            {
+                liteRoom.Checked = false;
+                settings.UseLiteRaceRoom = false;
+                MessageBox.Show(
+                    "Save a therun.gg upload key before enabling the lightweight race room.",
+                    "therun.gg Races",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            settings.UseLiteRaceRoom = liteRoom.Checked;
+        };
 
         keyBox.Text = settings.UploadKey;
         status.Text = keyBox.TextLength == 36

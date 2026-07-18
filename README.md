@@ -15,6 +15,8 @@ This project is not an official therun.gg or LiveSplit component.
 - Rechecks race status before opening a room.
 - Opens the race room inside LiveSplit and keeps its login session in a
   dedicated WebView2 profile.
+- Attempts to unjoin a pending race when either race-room window is closed.
+  Closing after the countdown starts does not forfeit the race.
 - Provides a lightweight local HTML room with participant progress and race
   actions. The official page is the default; enable the lightweight room in
   the race-provider settings when desired.
@@ -38,19 +40,21 @@ with features added by therun.gg.
 The optional lightweight room is a small HTML page embedded in this component.
 Enable **Use lightweight HTML race room** in the **therun.gg Races** provider
 settings only when the official race page does not load or work correctly in
-LiveSplit. The choice is saved and applies the next time a room is opened.
+LiveSplit. A saved therun.gg Upload Key is required to enable this option. The
+choice is saved and applies the next time a room is opened.
 
 The lightweight room:
 
 - displays the race status, countdown, participants, current split, progress,
   and times;
-- supports Join, Ready, Unready, Finish, and Leave/Forfeit;
+- supports Join, Ready, Unready, and Unjoin before the race starts;
 - reuses the therun.gg login session stored in the component's WebView2
   profile without exposing the session token to its HTML; and
 - includes an **Official page** button for opening the complete room.
 
-It does not replace team management, chat, moderation, detailed graphs, stream
-views, or other advanced features. Use the official page for those features.
+It does not provide Finish or Forfeit actions, and it does not replace team
+management, chat, moderation, detailed graphs, stream views, or other advanced
+features. Use the official page for those features.
 Because the lightweight room relies on therun.gg API behavior, a future API
 change may require a component update.
 

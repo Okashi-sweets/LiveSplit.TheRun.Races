@@ -27,6 +27,7 @@ internal sealed class RaceRoomForm : Form
     private bool navigatingBackToRace;
     private bool liteLoaded;
     private bool forceOfficialRoom;
+    private bool closeAfterUnjoin;
     private CancellationTokenSource liteCancellation;
 
     public RaceRoomForm(
@@ -75,6 +76,7 @@ internal sealed class RaceRoomForm : Form
         Controls.Add(webView);
         Controls.Add(loadingLabel);
         Load += OnLoaded;
+        FormClosing += OnFormClosing;
         FormClosed += OnFormClosed;
         Show();
     }
@@ -371,6 +373,40 @@ internal sealed class RaceRoomForm : Form
         if (!string.IsNullOrWhiteSpace(webView.CoreWebView2?.DocumentTitle))
         {
             Text = webView.CoreWebView2.DocumentTitle + " - LiveSplit";
+        }
+    }
+
+    private async void OnFormClosing(object sender, FormClosingEventArgs e)
+    {
+        if (closeAfterUnjoin)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        closeAfterUnjoin = true;
+        try
+        {
+            string sessionId = await GetSessionId();
+            if (!string.IsNullOrWhiteSpace(sessionId))
+            {
+                await api.PerformRaceAction(raceId, "leave", sessionId, null);
+                DebugLog.Info("Unjoined race while closing the race room. Race ID: " + raceId + ".");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Closing must still succeed when the user was not participating,
+            // the countdown already started, or therun.gg is unavailable.
+            DebugLog.Info("Could not unjoin while closing the race room. Race ID: " +
+                raceId + ". " + ex.Message);
+        }
+        finally
+        {
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke((Action)Close);
+            }
         }
     }
 

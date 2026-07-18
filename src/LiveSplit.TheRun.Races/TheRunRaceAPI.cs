@@ -130,12 +130,23 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
         roomForm?.Close();
         var settings = Settings as TheRunRaceSettings;
+        bool useLiteRoom = settings?.UseLiteRaceRoom == true;
+        if (useLiteRoom && string.IsNullOrWhiteSpace(settings.UploadKey))
+        {
+            useLiteRoom = false;
+            MessageBox.Show(
+                "The lightweight race room requires a therun.gg upload key. " +
+                "The official race page will be opened instead.",
+                "therun.gg Races",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
         roomForm = new RaceRoomForm(
             this,
             raceId,
             WebsiteRoot + "/" + Uri.EscapeDataString(raceId),
             model.CurrentState.LayoutSettings.AlwaysOnTop,
-            settings?.UseLiteRaceRoom ?? false);
+            useLiteRoom);
         StartWatcher(model, raceId);
     }
 
@@ -407,6 +418,13 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             throw new InvalidOperationException("Please log in to therun.gg first.");
         }
 
+        TheRunRaceDto race = await GetRace(raceId);
+        if (race?.status != "pending")
+        {
+            throw new InvalidOperationException(
+                "Race actions are unavailable after the countdown starts.");
+        }
+
         string path;
         HttpMethod method = HttpMethod.Post;
         string body = null;
@@ -422,7 +440,6 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
                 break;
             case "ready": path = "/participants/ready"; break;
             case "unready": path = "/participants/unready"; break;
-            case "finish": path = "/participants/finish"; break;
             default: throw new InvalidOperationException("Unknown race action.");
         }
 
