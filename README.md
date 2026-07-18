@@ -15,6 +15,9 @@ This project is not an official therun.gg or LiveSplit component.
 - Rechecks race status before opening a room.
 - Opens the race room inside LiveSplit and keeps its login session in a
   dedicated WebView2 profile.
+- Provides a lightweight local HTML room with participant progress and race
+  actions. The official page is the default; enable the lightweight room in
+  the race-provider settings when desired.
 - Applies the configured countdown as a negative LiveSplit offset when a room
   is opened and restores the previous offset after leaving.
 - Starts LiveSplit so its zero aligns with the race start time, without later
@@ -26,8 +29,30 @@ This project is not an official therun.gg or LiveSplit component.
 - Disables its own timer uploader while the official component is active in
   the current layout, preventing duplicate updates.
 
-The component opens a room but does not itself click Join, Ready, Finish, or
-Forfeit. Those actions remain inside the therun.gg page.
+## Official and lightweight race rooms
+
+The official therun.gg race page is used by default and is recommended for
+normal use. It provides the complete race experience and remains compatible
+with features added by therun.gg.
+
+The optional lightweight room is a small HTML page embedded in this component.
+Enable **Use lightweight HTML race room** in the **therun.gg Races** provider
+settings only when the official race page does not load or work correctly in
+LiveSplit. The choice is saved and applies the next time a room is opened.
+
+The lightweight room:
+
+- displays the race status, countdown, participants, current split, progress,
+  and times;
+- supports Join, Ready, Unready, Finish, and Leave/Forfeit;
+- reuses the therun.gg login session stored in the component's WebView2
+  profile without exposing the session token to its HTML; and
+- includes an **Official page** button for opening the complete room.
+
+It does not replace team management, chat, moderation, detailed graphs, stream
+views, or other advanced features. Use the official page for those features.
+Because the lightweight room relies on therun.gg API behavior, a future API
+change may require a component update.
 
 ## Requirements
 
@@ -35,7 +60,8 @@ Forfeit. Those actions remain inside the therun.gg page.
 
 ## Installation
 
-1. Download `LiveSplit.TheRun.Races.dll` from the latest GitHub Release.
+1. Download the release archive containing `LiveSplit.TheRun.Races.dll`,
+   `LICENSE`, and `THIRD-PARTY-NOTICES.md` from the latest GitHub Release.
 2. Copy it to LiveSplit's `Components` directory.
 3. Restart LiveSplit.
 4. Enable/configure **therun.gg Races** in LiveSplit's race-provider settings.
@@ -107,3 +133,7 @@ timer-upload implementation are adapted from the official MIT-licensed
 [`LiveSplit.TheRun`](https://github.com/therungg/LiveSplit.TheRun) component.
 See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for attribution and
 third-party license information.
+
+Release archives should contain this project's DLL, `LICENSE`, and
+`THIRD-PARTY-NOTICES.md`. Do not repackage the WebView2 assemblies from the
+NuGet build output; supported LiveSplit installations already provide them.

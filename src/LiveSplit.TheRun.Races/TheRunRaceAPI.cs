@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -39,7 +40,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     private TheRunRaceAPI()
     {
-        DebugLog.Info("Component initialized. Version 0.2.1.");
+        DebugLog.Info("Component initialized. Version 0.3.0.");
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         JoinRace = Join;
         CreateRace = _ => OpenUrl(WebsiteRoot + "/create");
@@ -128,11 +129,13 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         PrepareCountdownOffset(model, race.countdownSeconds);
 
         roomForm?.Close();
+        var settings = Settings as TheRunRaceSettings;
         roomForm = new RaceRoomForm(
             this,
             raceId,
             WebsiteRoot + "/" + Uri.EscapeDataString(raceId),
-            model.CurrentState.LayoutSettings.AlwaysOnTop);
+            model.CurrentState.LayoutSettings.AlwaysOnTop,
+            settings?.UseLiteRaceRoom ?? false);
         StartWatcher(model, raceId);
     }
 
@@ -388,6 +391,61 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         string json = await httpClient.GetStringAsync(
             ApiRoot + "/" + Uri.EscapeDataString(raceId));
         return serializer.Deserialize<RaceResponse>(json)?.result;
+    }
+
+    internal Task<string> GetRaceJson(string raceId) => httpClient.GetStringAsync(
+        ApiRoot + "/" + Uri.EscapeDataString(raceId));
+
+    internal async Task<string> PerformRaceAction(
+        string raceId,
+        string action,
+        string sessionId,
+        string password)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            throw new InvalidOperationException("Please log in to therun.gg first.");
+        }
+
+        string path;
+        HttpMethod method = HttpMethod.Post;
+        string body = null;
+        switch (action)
+        {
+            case "join":
+                path = "/participants";
+                body = serializer.Serialize(new { password = password ?? "" });
+                break;
+            case "leave":
+                path = "/participants";
+                method = HttpMethod.Delete;
+                break;
+            case "ready": path = "/participants/ready"; break;
+            case "unready": path = "/participants/unready"; break;
+            case "finish": path = "/participants/finish"; break;
+            default: throw new InvalidOperationException("Unknown race action.");
+        }
+
+        using var request = new HttpRequestMessage(
+            method,
+            ApiRoot + "/" + Uri.EscapeDataString(raceId) + path);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", sessionId);
+        if (body != null)
+        {
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+        }
+
+        using HttpResponseMessage response = await httpClient.SendAsync(request);
+        string responseBody = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(responseBody)
+                    ? "therun.gg rejected the action (HTTP " + (int)response.StatusCode + ")."
+                    : responseBody);
+        }
+
+        return responseBody;
     }
 
     private static void Post(SynchronizationContext context, Action action)

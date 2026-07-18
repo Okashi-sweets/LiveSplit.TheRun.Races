@@ -42,9 +42,10 @@ The full license is available in the linked upstream repository.
 
 Source: <https://github.com/therungg/therun-frontend>
 
-MIT License. Copyright (c) 2023 therun.gg.
-The frontend was used to identify the public race-room behavior and API
-contracts; its source is not bundled with this project.
+The frontend was consulted to identify race-room behavior and API contracts.
+No frontend source code, styles, images, or other assets are bundled with this
+project. The checked-out frontend source did not contain a root license file,
+so this notice does not claim or rely on a license grant for that repository.
 
 ## LiveSplit.Racetime
 

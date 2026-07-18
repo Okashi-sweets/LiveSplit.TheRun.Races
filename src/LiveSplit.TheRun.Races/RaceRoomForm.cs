@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -16,20 +18,28 @@ internal sealed class RaceRoomForm : Form
 {
     private readonly TheRunRaceAPI api;
     private readonly string roomUrl;
+    private readonly string raceId;
+    private readonly bool useLiteRoom;
     private readonly WebView2 webView;
     private readonly Label loadingLabel;
     private readonly JavaScriptSerializer serializer = new();
     private bool navigatingToLogin;
     private bool navigatingBackToRace;
+    private bool liteLoaded;
+    private bool forceOfficialRoom;
+    private CancellationTokenSource liteCancellation;
 
     public RaceRoomForm(
         TheRunRaceAPI api,
         string raceId,
         string roomUrl,
-        bool alwaysOnTop)
+        bool alwaysOnTop,
+        bool useLiteRoom)
     {
         this.api = api;
+        this.raceId = raceId;
         this.roomUrl = roomUrl;
+        this.useLiteRoom = useLiteRoom;
 
         Text = "therun.gg - " + raceId;
         StartPosition = FormStartPosition.CenterScreen;
@@ -83,9 +93,18 @@ internal sealed class RaceRoomForm : Form
             webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
             webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
             webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
-            webView.Source = new Uri(roomUrl);
+            webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             loadingLabel.Visible = false;
             webView.Visible = true;
+            string sessionId = await GetSessionId();
+            if (useLiteRoom && !string.IsNullOrWhiteSpace(sessionId))
+            {
+                LoadLiteRoom();
+            }
+            else
+            {
+                webView.Source = new Uri(roomUrl);
+            }
             DebugLog.Info("Race-room WebView initialized.");
         }
         catch (Exception ex)
@@ -134,6 +153,15 @@ internal sealed class RaceRoomForm : Form
         {
             DebugLog.Info("therun.gg session cookie detected.");
             navigatingToLogin = false;
+            if (useLiteRoom && !forceOfficialRoom)
+            {
+                if (!liteLoaded)
+                {
+                    LoadLiteRoom();
+                }
+                return;
+            }
+
             if (!navigatingBackToRace && !IsRaceRoomUrl(webView.Source))
             {
                 navigatingBackToRace = true;
@@ -154,6 +182,140 @@ internal sealed class RaceRoomForm : Form
             await NavigateToOfficialLogin();
         }
     }
+
+    private void LoadLiteRoom()
+    {
+        liteLoaded = true;
+        try
+        {
+            using Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(
+                "LiveSplit.TheRun.Races.Assets.LiteRaceRoom.html");
+            if (stream == null)
+            {
+                throw new InvalidOperationException("The lightweight race-room resource is missing.");
+            }
+
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            string html = reader.ReadToEnd().Replace("{{RACE_ID}}", HtmlEncode(raceId));
+            webView.NavigateToString(html);
+            liteCancellation = new CancellationTokenSource();
+            _ = PollLiteRoom(liteCancellation.Token);
+            Text = "therun.gg Lite - " + raceId;
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Error("Could not load the lightweight race room.", ex);
+            liteLoaded = false;
+            forceOfficialRoom = true;
+            webView.Source = new Uri(roomUrl);
+        }
+    }
+
+    private async Task PollLiteRoom(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested && !IsDisposed)
+        {
+            try
+            {
+                string json = await api.GetRaceJson(raceId);
+                webView.CoreWebView2?.PostWebMessageAsJson(
+                    "{\"type\":\"snapshot\",\"payload\":" + json + "}");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Error("Lite race-room refresh failed.", ex);
+                PostLiteMessage("error", "Could not refresh the race room: " + ex.Message);
+            }
+
+            try
+            {
+                await Task.Delay(2000, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    private async void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        if (!liteLoaded)
+        {
+            return;
+        }
+
+        LiteCommand command;
+        try
+        {
+            command = serializer.Deserialize<LiteCommand>(e.WebMessageAsJson);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (command?.type == "official")
+        {
+            liteCancellation?.Cancel();
+            liteLoaded = false;
+            forceOfficialRoom = true;
+            webView.Source = new Uri(roomUrl);
+            return;
+        }
+
+        if (command?.type != "action" || string.IsNullOrWhiteSpace(command.action))
+        {
+            return;
+        }
+
+        try
+        {
+            string sessionId = await GetSessionId();
+            await api.PerformRaceAction(raceId, command.action, sessionId, command.password);
+            PostLiteMessage("success", "Action completed.");
+            string json = await api.GetRaceJson(raceId);
+            webView.CoreWebView2?.PostWebMessageAsJson(
+                "{\"type\":\"snapshot\",\"payload\":" + json + "}");
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Error("Lite race-room action failed: " + command.action + ".", ex);
+            PostLiteMessage("error", CleanApiError(ex.Message));
+        }
+    }
+
+    private async Task<string> GetSessionId()
+    {
+        IReadOnlyList<CoreWebView2Cookie> cookies =
+            await webView.CoreWebView2.CookieManager.GetCookiesAsync("https://therun.gg");
+        foreach (CoreWebView2Cookie cookie in cookies)
+        {
+            if (cookie.Name == "session_id" && !string.IsNullOrWhiteSpace(cookie.Value))
+            {
+                return cookie.Value;
+            }
+        }
+        return null;
+    }
+
+    private void PostLiteMessage(string type, string message)
+    {
+        string json = serializer.Serialize(new { type, message });
+        webView.CoreWebView2?.PostWebMessageAsJson(json);
+    }
+
+    private static string CleanApiError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "The action failed.";
+        }
+        return message.Length > 500 ? message.Substring(0, 500) : message;
+    }
+
+    private static string HtmlEncode(string value) =>
+        System.Net.WebUtility.HtmlEncode(value ?? "");
 
     private async Task NavigateToOfficialLogin()
     {
@@ -214,9 +376,18 @@ internal sealed class RaceRoomForm : Form
 
     private void OnFormClosed(object sender, FormClosedEventArgs e)
     {
+        liteCancellation?.Cancel();
+        liteCancellation?.Dispose();
         DebugLog.Info("Disposing race-room WebView.");
         api.OnRoomClosed(this);
         webView.Dispose();
+    }
+
+    private sealed class LiteCommand
+    {
+        public string type { get; set; }
+        public string action { get; set; }
+        public string password { get; set; }
     }
 
     private void ShowWebView2RuntimeDialog()

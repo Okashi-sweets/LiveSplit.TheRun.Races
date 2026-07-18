@@ -16,6 +16,7 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
     public bool IsStatsUploadingEnabled { get; set; } = true;
     public bool IsUploadOnResetEnabled { get; set; } = true;
     public bool IsLayoutPathUploadEnabled { get; set; }
+    public bool UseLiteRaceRoom { get; set; }
 
     public string UploadKey => File.Exists(UploadKeyFile)
         ? File.ReadAllText(UploadKeyFile).Trim()
@@ -43,7 +44,8 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
         IsLiveTrackingEnabled = IsLiveTrackingEnabled,
         IsStatsUploadingEnabled = IsStatsUploadingEnabled,
         IsUploadOnResetEnabled = IsUploadOnResetEnabled,
-        IsLayoutPathUploadEnabled = IsLayoutPathUploadEnabled
+        IsLayoutPathUploadEnabled = IsLayoutPathUploadEnabled,
+        UseLiteRaceRoom = UseLiteRaceRoom
     };
 
     public override void FromXml(XmlElement element, Version version)
@@ -53,6 +55,7 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
         IsStatsUploadingEnabled = ReadBool(element, nameof(IsStatsUploadingEnabled), true);
         IsUploadOnResetEnabled = ReadBool(element, nameof(IsUploadOnResetEnabled), true);
         IsLayoutPathUploadEnabled = ReadBool(element, nameof(IsLayoutPathUploadEnabled), false);
+        UseLiteRaceRoom = ReadBool(element, nameof(UseLiteRaceRoom), false);
     }
 
     public override XmlElement ToXml(XmlDocument document)
@@ -62,6 +65,7 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
         Add(document, element, nameof(IsStatsUploadingEnabled), IsStatsUploadingEnabled);
         Add(document, element, nameof(IsUploadOnResetEnabled), IsUploadOnResetEnabled);
         Add(document, element, nameof(IsLayoutPathUploadEnabled), IsLayoutPathUploadEnabled);
+        Add(document, element, nameof(UseLiteRaceRoom), UseLiteRaceRoom);
         return element;
     }
 

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>therun.gg Lite</title>
+<style>
+:root{color-scheme:dark;--bg:#111416;--panel:#191d20;--line:#30363b;--text:#f3f5f6;--muted:#9ca6ad;--green:#58c878;--red:#e46f6f;--blue:#71a7ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line);background:#111416f2}
+.brand{font-weight:750;color:var(--green)}.grow{flex:1}.muted{color:var(--muted)}button,input{font:inherit}
+button{border:1px solid var(--line);border-radius:6px;background:#242a2e;color:var(--text);padding:7px 11px;cursor:pointer}button:hover{border-color:#576168}button.primary{background:#226b3a;border-color:#348d51}button.danger{background:#642d31;border-color:#8c4046}
+main{max-width:1080px;margin:auto;padding:18px}.hero,.panel{border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.hero{padding:18px;margin-bottom:14px}.title{font-size:22px;font-weight:750}.subtitle{margin-top:3px;color:var(--muted)}
+.facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.chip{padding:4px 9px;border:1px solid var(--line);border-radius:99px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px}.panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;padding:12px 14px;border-bottom:1px solid var(--line)}
+.empty{padding:26px;text-align:center;color:var(--muted)}.runner{display:grid;grid-template-columns:minmax(140px,1fr) 90px 130px;gap:12px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--line)}.runner:last-child{border-bottom:0}.name{font-weight:650}.status{text-align:right;color:var(--muted)}
+.bar{height:5px;background:#30363b;border-radius:9px;overflow:hidden;margin-top:6px}.bar>i{display:block;height:100%;background:var(--green)}
+.actions{padding:12px;display:grid;gap:8px}.actions button{width:100%}.password{width:100%;border:1px solid var(--line);border-radius:6px;background:#101315;color:var(--text);padding:8px}
+#notice{display:none;margin-bottom:14px;padding:10px 12px;border-radius:6px;border:1px solid var(--line)}#notice.error{display:block;color:#ffb8b8;border-color:#713d42;background:#321d20}#notice.success{display:block;color:#baf0c8;border-color:#365f42;background:#1b3021}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.runner{grid-template-columns:1fr 80px}.runner .progress{grid-column:1/-1}header{padding:10px}main{padding:10px}}
+</style>
+</head>
+<body>
+<header><span class="brand">therun.gg Lite</span><span class="muted">Race {{RACE_ID}}</span><span class="grow"></span><button id="official">Official page</button></header>
+<main>
+  <div id="notice"></div>
+  <section class="hero"><div class="title" id="title">Loading race…</div><div class="subtitle" id="subtitle"></div><div class="facts" id="facts"></div></section>
+  <div class="grid">
+    <section class="panel"><h2>Participants</h2><div id="participants" class="empty">Waiting for race data…</div></section>
+    <aside class="panel"><h2>Race actions</h2><div class="actions">
+      <input id="password" class="password" type="password" placeholder="Password (if required)">
+      <button class="primary" data-action="join">Join</button>
+      <button class="primary" data-action="ready">Ready</button>
+      <button data-action="unready">Unready</button>
+      <button class="primary" data-action="finish">Finish</button>
+      <button class="danger" data-action="leave">Leave / Forfeit</button>
+      <div class="muted">Only actions valid for your current race state will be accepted.</div>
+    </div></aside>
+  </div>
+</main>
+<script>
+const $=id=>document.getElementById(id), esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const time=ms=>{if(ms==null)return '—';let s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;return(h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0')};
+function notice(type,message){const n=$('notice');n.className=type;n.textContent=message;clearTimeout(notice.t);notice.t=setTimeout(()=>{n.className='';n.textContent=''},5000)}
+function render(r){
+  $('title').textContent=r.customName||r.displayGame||'Race'; $('subtitle').textContent=[r.displayGame,r.displayCategory].filter(Boolean).join(' · ');
+  $('facts').innerHTML=[r.status,(r.participantCount??0)+' participants',(r.readyParticipantCount??0)+' ready',r.countdownSeconds?time(r.countdownSeconds*1000)+' countdown':null].filter(Boolean).map(x=>'<span class="chip">'+esc(x)+'</span>').join('');
+  const ps=r.participants||[]; if(!ps.length){$('participants').className='empty';$('participants').textContent='No participants yet.';return}
+  $('participants').className=''; $('participants').innerHTML=ps.map(p=>{const l=p.liveData||{},pct=Math.max(0,Math.min(100,l.runPercentageTime??l.runPercentageSplits??0));return '<div class="runner"><div><div class="name">'+esc(p.user)+'</div><div class="muted">'+esc(l.currentSplitName||p.pb||'')+'</div></div><div class="status">'+esc(p.status)+'</div><div class="progress"><div>'+time(p.finalTime??l.currentTime)+'</div><div class="bar"><i style="width:'+pct+'%"></i></div></div></div>'}).join('');
+}
+chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.type==='snapshot'&&m.payload?.result)render(m.payload.result);else if(m.type==='error'||m.type==='success')notice(m.type,m.message)});
+document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;chrome.webview.postMessage({type:'action',action:b.dataset.action,password:$('password').value});setTimeout(()=>b.disabled=false,1000)}));
+$('official').addEventListener('click',()=>chrome.webview.postMessage({type:'official'}));
+</script>
+</body>
+</html>

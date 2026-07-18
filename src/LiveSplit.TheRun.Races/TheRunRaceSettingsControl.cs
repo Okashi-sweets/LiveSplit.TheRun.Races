@@ -23,9 +23,23 @@ internal sealed class TheRunRaceSettingsControl : UserControl
         var live = new CheckBox { Text = "Send live timer updates to therun.gg", AutoSize = true, Checked = settings.IsLiveTrackingEnabled };
         var files = new CheckBox { Text = "Upload splits on completion and reset", AutoSize = true, Checked = settings.IsStatsUploadingEnabled && settings.IsUploadOnResetEnabled };
         var layout = new CheckBox { Text = "Include the LiveSplit layout path in uploads", AutoSize = true, Checked = settings.IsLayoutPathUploadEnabled };
+        var liteRoom = new CheckBox
+        {
+            Text = "Use lightweight HTML race room",
+            AutoSize = true,
+            Checked = settings.UseLiteRaceRoom
+        };
+        var liteRoomNote = new Label
+        {
+            Text = "Only recommended when the official therun.gg race page does not work.",
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            Margin = new Padding(20, 0, 0, 6)
+        };
         live.CheckedChanged += (_, _) => settings.IsLiveTrackingEnabled = live.Checked;
         files.CheckedChanged += (_, _) => settings.IsStatsUploadingEnabled = settings.IsUploadOnResetEnabled = files.Checked;
         layout.CheckedChanged += (_, _) => settings.IsLayoutPathUploadEnabled = layout.Checked;
+        liteRoom.CheckedChanged += (_, _) => settings.UseLiteRaceRoom = liteRoom.Checked;
 
         keyBox.Text = settings.UploadKey;
         status.Text = keyBox.TextLength == 36
@@ -46,6 +60,8 @@ internal sealed class TheRunRaceSettingsControl : UserControl
         table.SetColumnSpan(live, 2); table.Controls.Add(live, 0, 4);
         table.SetColumnSpan(files, 2); table.Controls.Add(files, 0, 5);
         table.SetColumnSpan(layout, 2); table.Controls.Add(layout, 0, 6);
+        table.SetColumnSpan(liteRoom, 2); table.Controls.Add(liteRoom, 0, 7);
+        table.SetColumnSpan(liteRoomNote, 2); table.Controls.Add(liteRoomNote, 0, 8);
         Controls.Add(table);
     }
 
