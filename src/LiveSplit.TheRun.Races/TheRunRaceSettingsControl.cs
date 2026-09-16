@@ -10,6 +10,7 @@ namespace LiveSplit.TheRun.Races;
 
 internal sealed class TheRunRaceSettingsControl : UserControl
 {
+    private const int MaxApiResponseBytes = 256 * 1024;
     private readonly TheRunRaceSettings settings;
     private readonly TextBox keyBox = new() { Dock = DockStyle.Fill, UseSystemPasswordChar = true };
     private readonly Button testButton = new() { Text = "Save and test", AutoSize = true };
@@ -34,7 +35,7 @@ internal sealed class TheRunRaceSettingsControl : UserControl
         testButton.Click += async (_, _) => await SaveAndValidate();
 
         var keyLink = new LinkLabel { Text = "Get an upload key", AutoSize = true };
-        keyLink.LinkClicked += (_, _) => Process.Start(new ProcessStartInfo("https://therun.gg/livesplit") { UseShellExecute = true });
+        keyLink.LinkClicked += (_, _) => OpenUploadKeyPage();
 
         var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Padding = new Padding(8) };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -46,33 +47,37 @@ internal sealed class TheRunRaceSettingsControl : UserControl
         table.SetColumnSpan(live, 2); table.Controls.Add(live, 0, 4);
         table.SetColumnSpan(files, 2); table.Controls.Add(files, 0, 5);
         table.SetColumnSpan(layout, 2); table.Controls.Add(layout, 0, 6);
-#if LITE_ROOM
-        var liteRoomNote = new Label
-        {
-            Text = "An upload key is required. Use this Lite provider only when the official race page does not work.",
-            AutoSize = true,
-            ForeColor = SystemColors.GrayText,
-            Margin = new Padding(0, 6, 0, 0)
-        };
-        table.SetColumnSpan(liteRoomNote, 2); table.Controls.Add(liteRoomNote, 0, 7);
-#endif
         Controls.Add(table);
     }
 
     private async System.Threading.Tasks.Task SaveAndValidate()
     {
-        settings.SaveUploadKey(keyBox.Text);
+        string candidateKey = keyBox.Text.Trim();
         testButton.Enabled = false;
         status.Text = "Checking the upload key...";
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            HttpResponseMessage response = await client.GetAsync("https://api.therun.gg/users/uploadKey/validate/" + Uri.EscapeDataString(settings.UploadKey));
+            if (candidateKey.Length != 36)
+            {
+                throw new InvalidOperationException("The upload key must contain 36 characters.");
+            }
+
+            using var client = new HttpClient(new HttpClientHandler
+            {
+                AllowAutoRedirect = false
+            })
+            {
+                Timeout = TimeSpan.FromSeconds(15),
+                MaxResponseContentBufferSize = MaxApiResponseBytes
+            };
+            using HttpResponseMessage response = await client.GetAsync(
+                "https://api.therun.gg/users/uploadKey/validate/" + Uri.EscapeDataString(candidateKey));
             string body = await response.Content.ReadAsStringAsync();
             if (!response.IsSuccessStatusCode) throw new InvalidOperationException();
             var json = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(body);
             var result = (Dictionary<string, object>)json["result"];
             var data = (Dictionary<string, object>)result["data"];
+            settings.SaveUploadKey(candidateKey);
             status.ForeColor = Color.Green;
             status.Text = "Connected as " + data["username"] + ".";
         }
@@ -82,5 +87,22 @@ internal sealed class TheRunRaceSettingsControl : UserControl
             status.Text = "The upload key could not be validated.";
         }
         finally { testButton.Enabled = true; }
+    }
+
+    private void OpenUploadKeyPage()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://therun.gg/livesplit")
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Error("Could not open the therun.gg upload-key page.", ex);
+            status.ForeColor = Color.Firebrick;
+            status.Text = "The upload-key page could not be opened.";
+        }
     }
 }

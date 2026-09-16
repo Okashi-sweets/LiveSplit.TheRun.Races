@@ -38,7 +38,11 @@ public sealed class TheRunRaceInfo : IRaceInfo
         ? 1
         : RawStatus is "starting" or "progress" ? 3 : 42;
 
-    public bool IsParticipant(string username) => false;
+    // LiveSplit only invokes the provider's JoinRace callback for an in-progress
+    // race when this returns true. The therun.gg provider uses that callback to
+    // open the room in observation mode, so ongoing public races must be treated
+    // as viewable by this provider even though no username is available here.
+    public bool IsParticipant(string username) => State == 3;
 
     internal static TheRunRaceInfo FromDto(TheRunRaceDto race) => new()
     {

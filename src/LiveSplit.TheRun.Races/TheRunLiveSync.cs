@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
@@ -15,10 +16,23 @@ namespace LiveSplit.TheRun.Races;
 
 internal sealed class TheRunLiveSync : IDisposable
 {
+    private const int MaxApiResponseBytes = 1024 * 1024;
+    private const string UploadHost = "splits-bucket-main.s3.eu-west-1.amazonaws.com";
     private const string LiveUrl = "https://dspc6ekj2gjkfp44cjaffhjeue0fbswr.lambda-url.eu-west-1.on.aws/";
     private const string UploadUrl = "https://2uxp372ks6nwrjnk6t7lqov4zu0solno.lambda-url.eu-west-1.on.aws/";
-    private readonly HttpClient client = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private readonly HttpClient client = new(new HttpClientHandler
+    {
+        AllowAutoRedirect = false
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(15),
+        MaxResponseContentBufferSize = MaxApiResponseBytes
+    };
+    private readonly object liveCancellationLock = new();
+    private readonly CancellationTokenSource lifetimeCancellation = new();
+    private readonly SemaphoreSlim uploadGate = new(1, 1);
     private CancellationTokenSource liveCancellation;
+    private bool disposed;
     private bool paused;
     private bool justResumed;
     private TimeSpan pausedAtLastResume;
@@ -49,6 +63,8 @@ internal sealed class TheRunLiveSync : IDisposable
 
     private string GetSendBlockReason()
     {
+        if (Settings == null || !Settings.Enabled)
+            return "the therun.gg race provider is disabled";
         if (OfficialSenderIsActive())
             return "the official LiveSplit.TheRun sender is active in the current layout";
         if (string.IsNullOrWhiteSpace(State.Run.GameName))
@@ -74,20 +90,56 @@ internal sealed class TheRunLiveSync : IDisposable
 
     private async void HandleSplit(object sender, object args)
     {
-        if (!Settings.IsLiveTrackingEnabled)
+        if (Settings == null || !Settings.Enabled)
         {
-            DebugLog.Info("Live timer update skipped because live tracking is disabled.");
+            DebugLog.Info("Timer synchronization skipped because the race provider is disabled.");
             return;
         }
-        if (!CanSend("Live timer update")) return;
-        try
+        if (!Settings.IsLiveTrackingEnabled && !Settings.IsStatsUploadingEnabled)
         {
-            await SendLive();
-            if (State.CurrentSplitIndex == State.Run.Count && Settings.IsStatsUploadingEnabled)
-                await UploadSplits();
+            DebugLog.Info("Timer synchronization skipped because live tracking and stats uploading are disabled.");
+            return;
         }
-        catch (Exception ex) { DebugLog.Error("Live timer update or completion upload failed.", ex); }
+        if (!CanSend("Timer synchronization")) return;
+
+        bool shouldUpload = State.CurrentSplitIndex == State.Run.Count
+            && Settings.IsStatsUploadingEnabled;
+        Task liveTask = Settings.IsLiveTrackingEnabled ? SendLive() : null;
+        Task uploadTask = shouldUpload ? UploadSplits() : null;
+        // SendLive captures the resume flag synchronously before its first await.
         justResumed = false;
+
+        if (liveTask != null)
+        {
+            try
+            {
+                await liveTask;
+            }
+            catch (OperationCanceledException)
+            {
+                DebugLog.Info("Superseded live timer update cancelled.");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Error("Live timer update failed.", ex);
+            }
+        }
+
+        if (uploadTask != null)
+        {
+            try
+            {
+                await uploadTask;
+            }
+            catch (OperationCanceledException)
+            {
+                DebugLog.Info("Completion upload cancelled.");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Error("Completion upload failed.", ex);
+            }
+        }
     }
 
     private void HandlePause(object sender, object args)
@@ -107,31 +159,110 @@ internal sealed class TheRunLiveSync : IDisposable
 
     private async void HandleReset(object sender, TimerPhase phase)
     {
+        if (Settings == null || !Settings.Enabled)
+        {
+            ResetPauseState();
+            DebugLog.Info("Reset synchronization skipped because the race provider is disabled.");
+            return;
+        }
         if (!Settings.IsLiveTrackingEnabled
             && !(Settings.IsStatsUploadingEnabled && Settings.IsUploadOnResetEnabled))
         {
+            ResetPauseState();
             DebugLog.Info("Reset synchronization skipped because live tracking and reset uploads are disabled.");
             return;
         }
-        if (!CanSend("Reset synchronization")) return;
-        try
+        if (!CanSend("Reset synchronization"))
         {
-            if (Settings.IsLiveTrackingEnabled) await SendLive();
-            if (Settings.IsStatsUploadingEnabled && Settings.IsUploadOnResetEnabled) await UploadSplits();
+            ResetPauseState();
+            return;
         }
-        catch (Exception ex) { DebugLog.Error("Reset update or LSS upload failed.", ex); }
+        Task liveTask = Settings.IsLiveTrackingEnabled ? SendLive() : null;
+        Task uploadTask = Settings.IsStatsUploadingEnabled && Settings.IsUploadOnResetEnabled
+            ? UploadSplits()
+            : null;
+        ResetPauseState();
+
+        if (liveTask != null)
+        {
+            try
+            {
+                await liveTask;
+            }
+            catch (OperationCanceledException)
+            {
+                DebugLog.Info("Reset live update cancelled.");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Error("Reset live update failed.", ex);
+            }
+        }
+
+        if (uploadTask != null)
+        {
+            try
+            {
+                await uploadTask;
+            }
+            catch (OperationCanceledException)
+            {
+                DebugLog.Info("Reset LSS upload cancelled.");
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Error("Reset LSS upload failed.", ex);
+            }
+        }
+    }
+
+    private void ResetPauseState()
+    {
+        paused = false;
+        justResumed = false;
+        pausedAtLastResume = TimeSpan.Zero;
+        currentPausedTime = TimeSpan.Zero;
     }
 
     private async Task SendLive()
     {
-        liveCancellation?.Cancel();
-        liveCancellation?.Dispose();
-        liveCancellation = new CancellationTokenSource();
+        CancellationTokenSource requestCancellation;
+        lock (liveCancellationLock)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            liveCancellation?.Cancel();
+            liveCancellation?.Dispose();
+            requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                lifetimeCancellation.Token);
+            liveCancellation = requestCancellation;
+        }
+
         string json = new JavaScriptSerializer().Serialize(BuildLiveData());
-        using var content = new StringContent(json);
-        HttpResponseMessage response = await client.PostAsync(LiveUrl, content, liveCancellation.Token);
-        response.EnsureSuccessStatusCode();
-        DebugLog.Info("Live timer state sent. Split index: " + State.CurrentSplitIndex + ".");
+        try
+        {
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using HttpResponseMessage response = await client.PostAsync(
+                LiveUrl,
+                content,
+                requestCancellation.Token);
+            response.EnsureSuccessStatusCode();
+            DebugLog.Info("Live timer state sent. Split index: " + State.CurrentSplitIndex + ".");
+        }
+        finally
+        {
+            lock (liveCancellationLock)
+            {
+                if (ReferenceEquals(liveCancellation, requestCancellation))
+                {
+                    liveCancellation = null;
+                }
+            }
+            requestCancellation.Dispose();
+        }
     }
 
     private object BuildLiveData()
@@ -190,18 +321,48 @@ internal sealed class TheRunLiveSync : IDisposable
 
     private async Task UploadSplits()
     {
+        // Capture the completed attempt before waiting. A reset or a new run can
+        // otherwise mutate LiveSplitState while another upload is in progress.
         string game = State.Run.GameName;
         string category = State.Run.CategoryName;
-        string fileName = HttpUtility.UrlEncode(game) + "-" + HttpUtility.UrlEncode(category) + ".lss";
-        HttpResponseMessage result = await client.GetAsync(UploadUrl + "?filename=" + fileName + "&uploadKey=" + Settings.UploadKey);
-        result.EnsureSuccessStatusCode();
-        var response = new JavaScriptSerializer().Deserialize<Dictionary<string, string>>(await result.Content.ReadAsStringAsync());
-        string url = EncodeUrl(HttpUtility.UrlDecode(response["url"]), game, category);
-        using var content = new StringContent(CreateLss());
-        content.Headers.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment");
-        HttpResponseMessage put = await client.PutAsync(url, content);
-        put.EnsureSuccessStatusCode();
-        DebugLog.Info("LSS upload completed. Game: " + State.Run.GameName + ", category: " + State.Run.CategoryName + ".");
+        string uploadKey = Settings.UploadKey;
+        string lss = CreateLss();
+        CancellationToken cancellationToken = lifetimeCancellation.Token;
+        await uploadGate.WaitAsync(cancellationToken);
+        try
+        {
+            string fileName = HttpUtility.UrlEncode(game) + "-" + HttpUtility.UrlEncode(category) + ".lss";
+            using HttpResponseMessage result = await client.GetAsync(
+                UploadUrl + "?filename=" + fileName + "&uploadKey="
+                + Uri.EscapeDataString(uploadKey),
+                cancellationToken);
+            result.EnsureSuccessStatusCode();
+            var response = new JavaScriptSerializer().Deserialize<Dictionary<string, string>>(
+                await result.Content.ReadAsStringAsync());
+            string url = EncodeUrl(HttpUtility.UrlDecode(response["url"]), game, category);
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uploadUri)
+                || uploadUri.Scheme != Uri.UriSchemeHttps
+                || !string.Equals(uploadUri.Host, UploadHost, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "The upload service returned an unexpected destination.");
+            }
+
+            using var content = new StringContent(lss);
+            content.Headers.ContentDisposition =
+                new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment");
+            using HttpResponseMessage put = await client.PutAsync(
+                uploadUri,
+                content,
+                cancellationToken);
+            put.EnsureSuccessStatusCode();
+            DebugLog.Info("LSS upload completed. Game: " + game
+                + ", category: " + category + ".");
+        }
+        finally
+        {
+            uploadGate.Release();
+        }
     }
 
     private string CreateLss()
@@ -233,6 +394,17 @@ internal sealed class TheRunLiveSync : IDisposable
 
     public void Dispose()
     {
+        lock (liveCancellationLock)
+        {
+            if (disposed)
+            {
+                return;
+            }
+            disposed = true;
+            lifetimeCancellation.Cancel();
+            liveCancellation?.Cancel();
+        }
+
         State.OnStart -= HandleSplit;
         State.OnSplit -= HandleSplit;
         State.OnSkipSplit -= HandleSplit;
@@ -241,8 +413,6 @@ internal sealed class TheRunLiveSync : IDisposable
         State.OnPause -= HandlePause;
         State.OnResume -= HandleResume;
         State.OnReset -= HandleReset;
-        liveCancellation?.Cancel();
-        liveCancellation?.Dispose();
         client.Dispose();
     }
 }

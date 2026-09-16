@@ -22,12 +22,25 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
     private const string ApiRoot = "https://6nkfyze0o7.execute-api.eu-west-1.amazonaws.com/prod";
     private const string WebSocketRoot = "wss://ws.therun.gg";
     private const string WebsiteRoot = "https://therun.gg/races";
+    private const int MaxApiResponseBytes = 1024 * 1024;
+    private static readonly TimeSpan WebSocketReceiveTimeout = TimeSpan.FromSeconds(20);
 
-    private readonly HttpClient httpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private readonly HttpClient httpClient = new(new HttpClientHandler
+    {
+        AllowAutoRedirect = false
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(15),
+        MaxResponseContentBufferSize = MaxApiResponseBytes
+    };
     private readonly JavaScriptSerializer serializer = new();
     private readonly object watcherLock = new();
+    private const int MaxWebSocketMessageBytes = 1024 * 1024;
     private IReadOnlyList<TheRunRaceInfo> races = [];
     private CancellationTokenSource watcherCancellation;
+    private long watcherGeneration;
+    private long refreshGeneration;
+    private long joinGeneration;
     private RaceRoomForm roomForm;
     internal string LastRefreshError { get; private set; }
     private ITimerModel preparedModel;
@@ -40,21 +53,13 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     private TheRunRaceAPI()
     {
-#if LITE_ROOM
-        DebugLog.Info("Component initialized. Version 0.4.1.");
-#else
         DebugLog.Info("Component initialized. Version 0.4.0.");
-#endif
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         JoinRace = Join;
         CreateRace = _ => OpenUrl(WebsiteRoot + "/create");
     }
 
-#if LITE_ROOM
-    public override string ProviderName => "therun.gg Lite";
-#else
     public override string ProviderName => "therun.gg";
-#endif
 
     public override string Username => null;
 
@@ -62,6 +67,13 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
 
     internal void ConfigureLiveSync(LiveSplitState state, TheRunRaceSettings settings)
     {
+        if (settings == null || !settings.Enabled)
+        {
+            liveSync?.Dispose();
+            liveSync = null;
+            return;
+        }
+
         if (liveSync?.State == state)
         {
             liveSync.Settings = settings;
@@ -72,27 +84,42 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         liveSync = new TheRunLiveSync(state, settings);
     }
 
-    public override void RefreshRacesListAsync() => _ = RefreshRacesList();
+    public override void RefreshRacesListAsync()
+    {
+        long generation = Interlocked.Increment(ref refreshGeneration);
+        _ = RefreshRacesList(generation);
+    }
 
-    private async Task RefreshRacesList()
+    private async Task RefreshRacesList(long generation)
     {
         try
         {
-            string json = await httpClient.GetStringAsync(ApiRoot + "/active");
+            string json = await GetString(ApiRoot + "/active", CancellationToken.None);
             RaceListResponse response = serializer.Deserialize<RaceListResponse>(json);
-            races = response?.result?
+            IReadOnlyList<TheRunRaceInfo> refreshedRaces = response?.result?
                 .Where(race =>
                     race.status is "pending" or "starting" or "progress" &&
                     race.visible &&
                     !string.IsNullOrWhiteSpace(race.raceId))
                 .Select(TheRunRaceInfo.FromDto)
                 .ToArray() ?? [];
+            if (generation != Interlocked.Read(ref refreshGeneration))
+            {
+                return;
+            }
+
+            races = refreshedRaces;
             LastRefreshError = null;
             DebugLog.Info("Race list refreshed. Active races: " + races.Count + ".");
             RacesRefreshedCallback?.Invoke(this);
         }
         catch (Exception ex)
         {
+            if (generation != Interlocked.Read(ref refreshGeneration))
+            {
+                return;
+            }
+
             DebugLog.Error("Race list refresh failed.", ex);
             LastRefreshError = ex.ToString();
             races = [];
@@ -108,14 +135,24 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         }
 
         DebugLog.Info("Opening race room. Race ID: " + raceId + ".");
+        long generation = Interlocked.Increment(ref joinGeneration);
 
         TheRunRaceDto race;
         try
         {
             race = await GetRace(raceId);
+            if (generation != Interlocked.Read(ref joinGeneration))
+            {
+                return;
+            }
         }
         catch (Exception ex)
         {
+            if (generation != Interlocked.Read(ref joinGeneration))
+            {
+                return;
+            }
+
             DebugLog.Error("Race details could not be loaded. Race ID: " + raceId + ".", ex);
             MessageBox.Show(
                 "The race information could not be loaded.\n\n" + ex.Message,
@@ -151,20 +188,6 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         }
 
         roomForm?.Close();
-        var settings = Settings as TheRunRaceSettings;
-#if LITE_ROOM
-        if (settings == null || string.IsNullOrWhiteSpace(settings.UploadKey))
-        {
-            MessageBox.Show(
-                "The lightweight race room requires a therun.gg upload key. " +
-                "Save an upload key in the therun.gg Races Lite settings first.",
-                "therun.gg Races Lite",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            RestoreOriginalOffset();
-            return;
-        }
-#endif
         roomForm = new RaceRoomForm(
             this,
             raceId,
@@ -180,15 +203,17 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
     {
         DebugLog.Info("Starting race WebSocket watcher. Race ID: " + raceId + ".");
         CancellationTokenSource cancellation = new();
+        long generation;
         lock (watcherLock)
         {
             watcherCancellation?.Cancel();
             watcherCancellation?.Dispose();
             watcherCancellation = cancellation;
+            generation = ++watcherGeneration;
         }
 
         SynchronizationContext uiContext = SynchronizationContext.Current;
-        _ = WatchRace(model, raceId, uiContext, cancellation.Token);
+        _ = WatchRace(model, raceId, uiContext, generation, cancellation.Token);
     }
 
     internal void CancelWatcher()
@@ -196,6 +221,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         DebugLog.Info("Stopping race WebSocket watcher.");
         lock (watcherLock)
         {
+            watcherGeneration++;
             watcherCancellation?.Cancel();
             watcherCancellation?.Dispose();
             watcherCancellation = null;
@@ -219,60 +245,132 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         ITimerModel model,
         string raceId,
         SynchronizationContext uiContext,
+        long generation,
         CancellationToken cancellationToken)
     {
-        try
+        int consecutiveFailures = 0;
+        while (IsWatcherCurrent(generation, cancellationToken))
         {
-            using var socket = new ClientWebSocket();
-            var socketUri = new Uri(WebSocketRoot + "?race=" + Uri.EscapeDataString(raceId));
-            await socket.ConnectAsync(socketUri, cancellationToken);
-            DebugLog.Info("Race WebSocket connected. Race ID: " + raceId + ".");
-
-            // The socket does not send an initial snapshot, so close the race-between-check-and-connect gap.
-            TheRunRaceDto snapshot = await GetRace(raceId);
-            if (TryScheduleStart(model, snapshot, uiContext))
+            try
             {
-                return;
-            }
-
-            byte[] buffer = new byte[16 * 1024];
-            while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
-            {
-                string message = await ReceiveMessage(socket, buffer, cancellationToken);
-                if (message == null)
+                TheRunRaceDto snapshot = await GetRace(raceId, cancellationToken);
+                if (!IsWatcherCurrent(generation, cancellationToken)
+                    || HandleRaceState(model, snapshot, uiContext, generation, cancellationToken))
                 {
                     return;
                 }
 
-                RaceWebSocketMessage update = serializer.Deserialize<RaceWebSocketMessage>(message);
-                if (update?.type == "raceUpdate" && update.data?.raceId == raceId)
+                using var socket = new ClientWebSocket();
+                socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(10);
+                var socketUri = new Uri(WebSocketRoot + "?race=" + Uri.EscapeDataString(raceId));
+                await socket.ConnectAsync(socketUri, cancellationToken);
+                DebugLog.Info("Race WebSocket connected. Race ID: " + raceId + ".");
+                consecutiveFailures = 0;
+
+                // The socket does not send an initial snapshot, so close the
+                // race-between-check-and-connect gap after connecting as well.
+                snapshot = await GetRace(raceId, cancellationToken);
+                if (!IsWatcherCurrent(generation, cancellationToken)
+                    || HandleRaceState(model, snapshot, uiContext, generation, cancellationToken))
                 {
-                    if (TryScheduleStart(model, update.data, uiContext))
+                    return;
+                }
+
+                byte[] buffer = new byte[16 * 1024];
+                while (socket.State == WebSocketState.Open
+                    && IsWatcherCurrent(generation, cancellationToken))
+                {
+                    string message;
+                    using (var receiveCancellation =
+                        CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                     {
-                        return;
+                        receiveCancellation.CancelAfter(WebSocketReceiveTimeout);
+                        try
+                        {
+                            message = await ReceiveMessage(
+                                socket,
+                                buffer,
+                                receiveCancellation.Token);
+                        }
+                        catch (OperationCanceledException)
+                            when (!cancellationToken.IsCancellationRequested)
+                        {
+                            DebugLog.Info(
+                                "Race WebSocket was idle for "
+                                + WebSocketReceiveTimeout.TotalSeconds.ToString("F0")
+                                + " seconds; refreshing via HTTP.");
+                            message = null;
+                        }
+                    }
+                    if (message == null)
+                    {
+                        break;
                     }
 
-                    if (update.data.status is "progress" or "finished" or "aborted")
+                    RaceWebSocketMessage update = serializer.Deserialize<RaceWebSocketMessage>(message);
+                    if (update?.type == "raceUpdate"
+                        && update.data?.raceId == raceId
+                        && HandleRaceState(model, update.data, uiContext, generation, cancellationToken))
                     {
-                        Post(uiContext, RestoreOriginalOffset);
                         return;
                     }
                 }
+
+                DebugLog.Info("Race WebSocket closed; reconnecting. Race ID: " + raceId + ".");
+            }
+            catch (OperationCanceledException)
+            {
+                DebugLog.Info("Race WebSocket watcher cancelled. Race ID: " + raceId + ".");
+                return;
+            }
+            catch (Exception ex)
+            {
+                consecutiveFailures++;
+                DebugLog.Error(
+                    "Race watcher connection failed; retrying. Race ID: " + raceId
+                    + ", consecutive failures: " + consecutiveFailures + ".",
+                    ex);
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(Math.Min(10, 1 << Math.Min(3, consecutiveFailures))), cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
             }
         }
-        catch (OperationCanceledException)
+    }
+
+    private bool HandleRaceState(
+        ITimerModel model,
+        TheRunRaceDto race,
+        SynchronizationContext uiContext,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        if (race == null)
         {
-            DebugLog.Info("Race WebSocket watcher cancelled. Race ID: " + raceId + ".");
+            return false;
         }
-        catch (Exception ex)
+
+        if (TryScheduleStart(model, race, uiContext, generation, cancellationToken))
         {
-            DebugLog.Error("Race WebSocket watcher failed. Race ID: " + raceId + ".", ex);
-            Post(uiContext, () => MessageBox.Show(
-                "The connection to the therun.gg race room was lost before the countdown started.\n\n" + ex.Message,
-                "therun.gg Races",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning));
+            return true;
         }
+
+        if (race.status is "progress" or "finished" or "aborted")
+        {
+            PostIfWatcherCurrent(
+                uiContext,
+                generation,
+                cancellationToken,
+                RestoreOriginalOffset);
+            return true;
+        }
+
+        return false;
     }
 
     private static async Task<string> ReceiveMessage(
@@ -290,6 +388,16 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
                 return null;
             }
 
+            if (result.MessageType != WebSocketMessageType.Text)
+            {
+                throw new InvalidOperationException("The race WebSocket returned a non-text message.");
+            }
+
+            if (builder.Length + result.Count > MaxWebSocketMessageBytes)
+            {
+                throw new InvalidOperationException("The race WebSocket message exceeded the 1 MB limit.");
+            }
+
             builder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
         }
         while (!result.EndOfMessage);
@@ -300,7 +408,9 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
     private bool TryScheduleStart(
         ITimerModel model,
         TheRunRaceDto race,
-        SynchronizationContext uiContext)
+        SynchronizationContext uiContext,
+        long generation,
+        CancellationToken cancellationToken)
     {
         if (race?.status != "starting" || string.IsNullOrWhiteSpace(race.startTime))
         {
@@ -316,7 +426,11 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             return false;
         }
 
-        Post(uiContext, () => StartTimer(model, startTime.ToUniversalTime()));
+        PostIfWatcherCurrent(
+            uiContext,
+            generation,
+            cancellationToken,
+            () => StartTimer(model, startTime.ToUniversalTime()));
         DebugLog.Info("Race start scheduled for " + startTime.ToUniversalTime().ToString("O") + ".");
         return true;
     }
@@ -338,7 +452,7 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
             return;
         }
 
-        TimeSpan remaining = startTimeUtc - DateTime.UtcNow;
+        TimeSpan remaining = startTimeUtc - TimeStamp.CurrentDateTime.Time.ToUniversalTime();
         if (remaining < TimeSpan.Zero)
         {
             // Joining after the countdown is deliberately unsupported.
@@ -423,62 +537,42 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
         restoreOffsetOnReset = false;
     }
 
-    private async Task<TheRunRaceDto> GetRace(string raceId)
+    private async Task<TheRunRaceDto> GetRace(
+        string raceId,
+        CancellationToken cancellationToken = default)
     {
-        string json = await httpClient.GetStringAsync(
-            ApiRoot + "/" + Uri.EscapeDataString(raceId));
+        string json = await GetString(
+            ApiRoot + "/" + Uri.EscapeDataString(raceId),
+            cancellationToken);
         return serializer.Deserialize<RaceResponse>(json)?.result;
     }
 
-    internal Task<string> GetRaceJson(string raceId) => httpClient.GetStringAsync(
-        ApiRoot + "/" + Uri.EscapeDataString(raceId));
-
-    internal async Task<string> PerformRaceAction(
+    internal async Task LeaveRace(
         string raceId,
-        string action,
         string sessionId,
-        string password)
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             throw new InvalidOperationException("Please log in to therun.gg first.");
         }
 
-        TheRunRaceDto race = await GetRace(raceId);
+        TheRunRaceDto race = await GetRace(raceId, cancellationToken);
         if (race?.status != "pending")
         {
             throw new InvalidOperationException(
-                "Race actions are unavailable after the countdown starts.");
-        }
-
-        string path;
-        HttpMethod method = HttpMethod.Post;
-        string body = null;
-        switch (action)
-        {
-            case "join":
-                path = "/participants";
-                body = serializer.Serialize(new { password = password ?? "" });
-                break;
-            case "leave":
-                path = "/participants";
-                method = HttpMethod.Delete;
-                break;
-            case "ready": path = "/participants/ready"; break;
-            case "unready": path = "/participants/unready"; break;
-            default: throw new InvalidOperationException("Unknown race action.");
+                "The race can no longer be left without forfeiting.");
         }
 
         using var request = new HttpRequestMessage(
-            method,
-            ApiRoot + "/" + Uri.EscapeDataString(raceId) + path);
+            HttpMethod.Delete,
+            ApiRoot + "/" + Uri.EscapeDataString(raceId) + "/participants");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", sessionId);
-        if (body != null)
-        {
-            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-        }
 
-        using HttpResponseMessage response = await httpClient.SendAsync(request);
+        using HttpResponseMessage response = await httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseContentRead,
+            cancellationToken);
         string responseBody = await response.Content.ReadAsStringAsync();
         if (!response.IsSuccessStatusCode)
         {
@@ -488,23 +582,67 @@ public sealed class TheRunRaceAPI : RaceProviderAPI
                     : responseBody);
         }
 
-        return responseBody;
     }
 
-    private static void Post(SynchronizationContext context, Action action)
+    private async Task<string> GetString(string url, CancellationToken cancellationToken)
     {
+        using HttpResponseMessage response = await httpClient.GetAsync(
+            url,
+            HttpCompletionOption.ResponseContentRead,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    private bool IsWatcherCurrent(long generation, CancellationToken cancellationToken)
+    {
+        lock (watcherLock)
+        {
+            return !cancellationToken.IsCancellationRequested
+                && watcherGeneration == generation
+                && watcherCancellation != null
+                && watcherCancellation.Token == cancellationToken;
+        }
+    }
+
+    private void PostIfWatcherCurrent(
+        SynchronizationContext context,
+        long generation,
+        CancellationToken cancellationToken,
+        Action action)
+    {
+        void InvokeIfCurrent()
+        {
+            if (IsWatcherCurrent(generation, cancellationToken))
+            {
+                action();
+            }
+        }
+
         if (context == null)
         {
-            action();
+            InvokeIfCurrent();
         }
         else
         {
-            context.Post(_ => action(), null);
+            context.Post(_ => InvokeIfCurrent(), null);
         }
     }
 
     private static void OpenUrl(string url)
     {
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            DebugLog.Error("Could not open the therun.gg race page.", ex);
+            MessageBox.Show(
+                "The therun.gg page could not be opened.\n\n" + ex.Message,
+                "therun.gg Races",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
     }
 }

@@ -17,25 +17,31 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
     public bool IsUploadOnResetEnabled { get; set; } = true;
     public bool IsLayoutPathUploadEnabled { get; set; }
 
-    public string UploadKey => File.Exists(UploadKeyFile)
-        ? File.ReadAllText(UploadKeyFile).Trim()
-        : "";
+    public string UploadKey
+    {
+        get
+        {
+            try
+            {
+                return File.Exists(UploadKeyFile)
+                    ? File.ReadAllText(UploadKeyFile).Trim()
+                    : "";
+            }
+            catch (Exception ex)
+            {
+                DebugLog.Error("Could not read the shared therun.gg upload key.", ex);
+                return "";
+            }
+        }
+    }
 
     public override string Name
     {
-#if LITE_ROOM
-        get => "LiveSplit.TheRun.Races.Lite.dll";
-#else
         get => "LiveSplit.TheRun.Races.dll";
-#endif
         set { }
     }
 
-#if LITE_ROOM
-    public override string DisplayName => "therun.gg Races Lite";
-#else
-    public override string DisplayName => "therun.gg Races";
-#endif
+    public override string DisplayName => "therun.gg";
 
     public override string WebsiteLink => "https://therun.gg/races";
 
@@ -45,8 +51,30 @@ public sealed class TheRunRaceSettings : RaceProviderSettings
 
     internal void SaveUploadKey(string key)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(UploadKeyFile));
-        File.WriteAllText(UploadKeyFile, (key ?? "").Trim());
+        string directory = Path.GetDirectoryName(UploadKeyFile);
+        Directory.CreateDirectory(directory);
+        string temporaryFile = Path.Combine(
+            directory,
+            Path.GetFileName(UploadKeyFile) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            File.WriteAllText(temporaryFile, (key ?? "").Trim());
+            if (File.Exists(UploadKeyFile))
+            {
+                File.Replace(temporaryFile, UploadKeyFile, null);
+            }
+            else
+            {
+                File.Move(temporaryFile, UploadKeyFile);
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporaryFile))
+            {
+                File.Delete(temporaryFile);
+            }
+        }
     }
 
     public override object Clone() => new TheRunRaceSettings

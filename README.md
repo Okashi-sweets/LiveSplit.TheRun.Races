@@ -18,10 +18,8 @@ This project is not an official therun.gg or LiveSplit component.
 - Rechecks race status before opening a room.
 - Opens the race room inside LiveSplit and keeps its login session in a
   dedicated WebView2 profile.
-- Attempts to unjoin a pending race when either race-room window is closed.
+- Attempts to unjoin a pending race when the race-room window is closed.
   Closing after the countdown starts does not forfeit the race.
-- Provides separate official-page and lightweight-HTML component DLLs. Choose
-  the DLL for the room you want; there is no in-component display switch.
 - Applies the configured countdown as a negative LiveSplit offset when a room
   is opened and restores the previous offset after leaving.
 - Starts LiveSplit so its zero aligns with the race start time, without later
@@ -33,36 +31,11 @@ This project is not an official therun.gg or LiveSplit component.
 - Disables its own timer uploader while the official component is active in
   the current layout, preventing duplicate updates.
 
-## Official and lightweight components
+## Race room
 
 `LiveSplit.TheRun.Races.dll` opens the official therun.gg race page. This is
 the recommended component for normal use because it provides the complete
 race experience and remains compatible with features added by therun.gg.
-
-`LiveSplit.TheRun.Races.Lite.dll` always opens a small embedded HTML room. Use
-this separate component only when the official race page does not load or work
-correctly in LiveSplit. A saved therun.gg Upload Key is required before the
-Lite component can open a room.
-
-The lightweight room:
-
-- displays the race status, countdown, participants, current split, progress,
-  and times;
-- supports Join, Ready, Unready, and Unjoin before the race starts;
-- reuses the therun.gg login session stored in the component's WebView2
-  profile without exposing the session token to its HTML; and
-
-It does not provide Finish or Forfeit actions, and it does not replace team
-management, chat, moderation, detailed graphs, stream views, or other advanced
-features. It displays no action buttons when an in-progress room is opened.
-Use the official page for those features.
-
-### Lite component maintenance status
-
-Use the Lite component only when the standard official-page component does not
-work in your environment. The Lite component is provided as-is and is now
-feature-frozen. No further development, compatibility updates, or user support
-will be provided for it.
 
 ## Requirements
 
@@ -70,22 +43,13 @@ will be provided for it.
 
 ## Downloads
 
-Choose one of the following releases. Do not install both component variants
-at the same time.
-
-- **Standard version (recommended):** [Download from the v0.4.0 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/v0.4.0)
-  Download `LiveSplit.TheRun.Races.dll`. This version opens the official
-  therun.gg race page.
-- **Lite version (unsupported fallback):** [Download from the Lite v0.4.1 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/lite_v0.4.1)
-  Download `LiveSplit.TheRun.Races.Lite.dll`. Use it only when the standard
-  version does not work in your environment.
+[Download `LiveSplit.TheRun.Races.dll` from the v0.4.0 release](https://github.com/Okashi-sweets/LiveSplit.TheRun.Races/releases/tag/v0.4.0).
 
 ## Installation
 
-1. Download the DLL for the selected version from the corresponding release
-   linked above.
-2. Copy the selected DLL to LiveSplit's `Components` directory. Install only
-   the variant you intend to use.
+1. Download the DLL from the release linked above.
+2. Copy `LiveSplit.TheRun.Races.dll` to LiveSplit's `Components` directory.
+   Remove any legacy `LiveSplit.TheRun.Races.Lite.dll` left in the directory.
 3. Restart LiveSplit.
 4. Enable/configure **therun.gg Races** in LiveSplit's race-provider settings.
 
@@ -140,18 +104,12 @@ Build against a LiveSplit source checkout:
 ```powershell
 dotnet build src/LiveSplit.TheRun.Races/LiveSplit.TheRun.Races.csproj `
   -p:LsSrcPath=C:/path/to/LiveSplit/src
-
-dotnet build src/LiveSplit.TheRun.Races.Lite/LiveSplit.TheRun.Races.Lite.csproj `
-  -p:LsSrcPath=C:/path/to/LiveSplit/src
 ```
 
 Or build against the DLLs from a LiveSplit release:
 
 ```powershell
 dotnet build src/LiveSplit.TheRun.Races/LiveSplit.TheRun.Races.csproj `
-  -p:LsBinPath=C:/path/to/LiveSplit
-
-dotnet build src/LiveSplit.TheRun.Races.Lite/LiveSplit.TheRun.Races.Lite.csproj `
   -p:LsBinPath=C:/path/to/LiveSplit
 ```
 

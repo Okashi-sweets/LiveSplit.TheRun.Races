@@ -3,6 +3,7 @@
 **/obj/
 dist/
 artifacts/
+/dll/
 
 # IDE and user-specific files
 .vs/
